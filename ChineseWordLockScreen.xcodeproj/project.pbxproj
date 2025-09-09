@@ -6,7 +6,20 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		A44C26222E706227001F0051 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A44C26212E706227001F0051 /* WidgetKit.framework */; };
+		A44C26242E706227001F0051 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A44C26232E706227001F0051 /* SwiftUI.framework */; };
+		A44C26332E70622A001F0051 /* WordWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A44C261F2E706227001F0051 /* WordWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
+		A44C26312E70622A001F0051 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A49E606B2E705B6A006942DD /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A44C261E2E706227001F0051;
+			remoteInfo = WordWidgetExtension;
+		};
 		A49E608B2E705B6D006942DD /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = A49E606B2E705B6A006942DD /* Project object */;
@@ -23,13 +36,37 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		A44C26382E70622A001F0051 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A44C26332E70622A001F0051 /* WordWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		A44C261F2E706227001F0051 /* WordWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WordWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A44C26212E706227001F0051 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		A44C26232E706227001F0051 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		A49E60732E705B6A006942DD /* ChineseWordLockScreen.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ChineseWordLockScreen.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A49E608A2E705B6D006942DD /* ChineseWordLockScreenTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ChineseWordLockScreenTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A49E60942E705B6D006942DD /* ChineseWordLockScreenUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ChineseWordLockScreenUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A44C26372E70622A001F0051 /* Exceptions for "WordWidget" folder in "WordWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A44C261E2E706227001F0051 /* WordWidgetExtension */;
+		};
 		A49E609C2E705B6D006942DD /* Exceptions for "ChineseWordLockScreen" folder in "ChineseWordLockScreen" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -40,6 +77,14 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		A44C26252E706227001F0051 /* WordWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A44C26372E70622A001F0051 /* Exceptions for "WordWidget" folder in "WordWidgetExtension" target */,
+			);
+			path = WordWidget;
+			sourceTree = "<group>";
+		};
 		A49E60752E705B6A006942DD /* ChineseWordLockScreen */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -61,6 +106,15 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		A44C261C2E706227001F0051 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A44C26242E706227001F0051 /* SwiftUI.framework in Frameworks */,
+				A44C26222E706227001F0051 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A49E60702E705B6A006942DD /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -85,12 +139,23 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		A44C26202E706227001F0051 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				A44C26212E706227001F0051 /* WidgetKit.framework */,
+				A44C26232E706227001F0051 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		A49E606A2E705B6A006942DD = {
 			isa = PBXGroup;
 			children = (
 				A49E60752E705B6A006942DD /* ChineseWordLockScreen */,
 				A49E608D2E705B6D006942DD /* ChineseWordLockScreenTests */,
 				A49E60972E705B6D006942DD /* ChineseWordLockScreenUITests */,
+				A44C26252E706227001F0051 /* WordWidget */,
+				A44C26202E706227001F0051 /* Frameworks */,
 				A49E60742E705B6A006942DD /* Products */,
 			);
 			sourceTree = "<group>";
@@ -101,6 +166,7 @@
 				A49E60732E705B6A006942DD /* ChineseWordLockScreen.app */,
 				A49E608A2E705B6D006942DD /* ChineseWordLockScreenTests.xctest */,
 				A49E60942E705B6D006942DD /* ChineseWordLockScreenUITests.xctest */,
+				A44C261F2E706227001F0051 /* WordWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -108,6 +174,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		A44C261E2E706227001F0051 /* WordWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A44C26342E70622A001F0051 /* Build configuration list for PBXNativeTarget "WordWidgetExtension" */;
+			buildPhases = (
+				A44C261B2E706227001F0051 /* Sources */,
+				A44C261C2E706227001F0051 /* Frameworks */,
+				A44C261D2E706227001F0051 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A44C26252E706227001F0051 /* WordWidget */,
+			);
+			name = WordWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = WordWidgetExtension;
+			productReference = A44C261F2E706227001F0051 /* WordWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		A49E60722E705B6A006942DD /* ChineseWordLockScreen */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A49E609D2E705B6D006942DD /* Build configuration list for PBXNativeTarget "ChineseWordLockScreen" */;
@@ -115,10 +203,12 @@
 				A49E606F2E705B6A006942DD /* Sources */,
 				A49E60702E705B6A006942DD /* Frameworks */,
 				A49E60712E705B6A006942DD /* Resources */,
+				A44C26382E70622A001F0051 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				A44C26322E70622A001F0051 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				A49E60752E705B6A006942DD /* ChineseWordLockScreen */,
@@ -186,6 +276,9 @@
 				LastSwiftUpdateCheck = 1620;
 				LastUpgradeCheck = 1620;
 				TargetAttributes = {
+					A44C261E2E706227001F0051 = {
+						CreatedOnToolsVersion = 16.2;
+					};
 					A49E60722E705B6A006942DD = {
 						CreatedOnToolsVersion = 16.2;
 					};
@@ -216,11 +309,19 @@
 				A49E60722E705B6A006942DD /* ChineseWordLockScreen */,
 				A49E60892E705B6D006942DD /* ChineseWordLockScreenTests */,
 				A49E60932E705B6D006942DD /* ChineseWordLockScreenUITests */,
+				A44C261E2E706227001F0051 /* WordWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		A44C261D2E706227001F0051 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A49E60712E705B6A006942DD /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -245,6 +346,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		A44C261B2E706227001F0051 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A49E606F2E705B6A006942DD /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -269,6 +377,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		A44C26322E70622A001F0051 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A44C261E2E706227001F0051 /* WordWidgetExtension */;
+			targetProxy = A44C26312E70622A001F0051 /* PBXContainerItemProxy */;
+		};
 		A49E608C2E705B6D006942DD /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = A49E60722E705B6A006942DD /* ChineseWordLockScreen */;
@@ -282,6 +395,60 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		A44C26352E70622A001F0051 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 68MARMYKT8;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = WordWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = WordWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = SE.ChineseWordLockScreen.WordWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A44C26362E70622A001F0051 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 68MARMYKT8;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = WordWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = WordWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = SE.ChineseWordLockScreen.WordWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		A49E609E2E705B6D006942DD /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -291,6 +458,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"ChineseWordLockScreen/Preview Content\"";
+				DEVELOPMENT_TEAM = 68MARMYKT8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ChineseWordLockScreen/Info.plist;
@@ -321,6 +489,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"ChineseWordLockScreen/Preview Content\"";
+				DEVELOPMENT_TEAM = 68MARMYKT8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ChineseWordLockScreen/Info.plist;
@@ -532,6 +701,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		A44C26342E70622A001F0051 /* Build configuration list for PBXNativeTarget "WordWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A44C26352E70622A001F0051 /* Debug */,
+				A44C26362E70622A001F0051 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		A49E606E2E705B6A006942DD /* Build configuration list for PBXProject "ChineseWordLockScreen" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

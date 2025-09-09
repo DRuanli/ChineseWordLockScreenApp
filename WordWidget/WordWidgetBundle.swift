@@ -12,7 +12,5 @@ import SwiftUI
 struct WordWidgetBundle: WidgetBundle {
     var body: some Widget {
         WordWidget()
-        WordWidgetControl()
-        WordWidgetLiveActivity()
     }
 }
