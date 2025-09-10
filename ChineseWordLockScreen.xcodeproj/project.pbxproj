@@ -67,6 +67,14 @@
 			);
 			target = A44C261E2E706227001F0051 /* WordWidgetExtension */;
 		};
+		A44C264A2E715733001F0051 /* Exceptions for "ChineseWordLockScreen" folder in "WordWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Managers/HSKDatabaseSeeder.swift,
+				Models/HSKWord.swift,
+			);
+			target = A44C261E2E706227001F0051 /* WordWidgetExtension */;
+		};
 		A49E609C2E705B6D006942DD /* Exceptions for "ChineseWordLockScreen" folder in "ChineseWordLockScreen" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -89,6 +97,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				A49E609C2E705B6D006942DD /* Exceptions for "ChineseWordLockScreen" folder in "ChineseWordLockScreen" target */,
+				A44C264A2E715733001F0051 /* Exceptions for "ChineseWordLockScreen" folder in "WordWidgetExtension" target */,
 			);
 			path = ChineseWordLockScreen;
 			sourceTree = "<group>";

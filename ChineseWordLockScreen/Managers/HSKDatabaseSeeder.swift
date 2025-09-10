@@ -7,7 +7,7 @@
 
 import Foundation
 
-class HSKDatabaseSeeder {
+public class HSKDatabaseSeeder {
     static let shared = HSKDatabaseSeeder()
     
     private init() {}
