@@ -305,3 +305,9 @@ struct ProgressWidget: Widget {
         .supportedFamilies([.systemSmall, .systemMedium, .accessoryCircular])
     }
 }
+
+#Preview(as: .systemMedium) {
+    ProgressWidget()
+} timeline: {
+    WordEntry.placeholder()
+}
