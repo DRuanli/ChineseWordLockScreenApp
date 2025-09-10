@@ -2,7 +2,7 @@
 //  WordWidgetBundle.swift
 //  WordWidget
 //
-//  Created by Lê Nguyễn on 9/9/25.
+//  Fixed widget bundle without conflicts
 //
 
 import WidgetKit

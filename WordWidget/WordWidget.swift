@@ -2,19 +2,18 @@
 //  WordWidget.swift
 //  WordWidget
 //
-//  Enhanced version with Vietnamese support and interactive features
+//  Fixed minimalist widget implementation
 //
 
 import WidgetKit
 import SwiftUI
 import AppIntents
 
-// MARK: - Widget Intent for Interaction
-struct ChangeWordIntent: AppIntent {
-    static var title: LocalizedStringResource = "Change Word"
+// MARK: - App Intents
+struct NextWordIntent: AppIntent {
+    static var title: LocalizedStringResource = "Next Word"
     
     func perform() async throws -> some IntentResult {
-        // Update word in UserDefaults
         let userDefaults = UserDefaults(suiteName: "group.SE.ChineseWordLockScreen")
         let words = HSKDatabaseSeeder.shared.getSampleWords()
         let randomWord = words.randomElement()!
@@ -23,91 +22,111 @@ struct ChangeWordIntent: AppIntent {
         userDefaults?.set(randomWord.pinyin, forKey: "current_pinyin")
         userDefaults?.set(randomWord.meaning, forKey: "current_meaning")
         userDefaults?.set(randomWord.example, forKey: "current_example")
+        userDefaults?.set(randomWord.hskLevel, forKey: "current_hsk_level")
         userDefaults?.set(Date(), forKey: "last_update")
+        userDefaults?.synchronize()
         
-        // Reload widget
         WidgetCenter.shared.reloadAllTimelines()
+        return .result()
+    }
+}
+
+struct SaveWordIntent: AppIntent {
+    static var title: LocalizedStringResource = "Save Word"
+    
+    func perform() async throws -> some IntentResult {
+        let userDefaults = UserDefaults(suiteName: "group.SE.ChineseWordLockScreen")
+        let currentHanzi = userDefaults?.string(forKey: "current_hanzi") ?? ""
+        var savedWords = userDefaults?.stringArray(forKey: "widget_saved_words") ?? []
+        
+        if !savedWords.contains(currentHanzi) {
+            savedWords.append(currentHanzi)
+            userDefaults?.set(savedWords, forKey: "widget_saved_words")
+            userDefaults?.synchronize()
+        }
         
         return .result()
     }
 }
 
-// MARK: - Provider
-struct Provider: TimelineProvider {
-    let userDefaults = UserDefaults(suiteName: "group.SE.ChineseWordLockScreen")
+// MARK: - Widget Entry
+struct WordEntry: TimelineEntry {
+    let date: Date
+    let hanzi: String
+    let pinyin: String
+    let englishMeaning: String
+    let vietnameseMeaning: String
+    let example: String?
+    let hskLevel: Int
+    let isSaved: Bool
+    let toneColors: [Color]
     
-    func placeholder(in context: Context) -> SimpleEntry {
-        SimpleEntry(
+    static func placeholder() -> WordEntry {
+        WordEntry(
             date: Date(),
-            hanzi: "宽",
-            pinyin: "kuān",
-            meaning: "wide",
-            vietnameseMeaning: "rộng",
-            example: "房间很宽",
-            toneColors: [.green]
+            hanzi: "学习",
+            pinyin: "xuéxí",
+            englishMeaning: "to study, to learn",
+            vietnameseMeaning: "học tập",
+            example: "我喜欢学习中文",
+            hskLevel: 4,
+            isSaved: false,
+            toneColors: [.yellow, .yellow]
         )
     }
+}
 
-    func getSnapshot(in context: Context, completion: @escaping (SimpleEntry) -> ()) {
-        let entry = getEntry()
-        completion(entry)
+// MARK: - Timeline Provider
+struct WordTimelineProvider: TimelineProvider {
+    private let userDefaults = UserDefaults(suiteName: "group.SE.ChineseWordLockScreen")
+    
+    func placeholder(in context: Context) -> WordEntry {
+        return WordEntry.placeholder()
     }
-
-    func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> ()) {
-        var entries: [SimpleEntry] = []
-        let currentDate = Date()
-        
-        // Update based on user preference (every unlock or timed)
-        let updateFrequency = userDefaults?.integer(forKey: "widget_update_frequency") ?? 10
-        
-        // Generate entries for next updates
-        for minuteOffset in stride(from: 0, to: 60, by: updateFrequency) {
-            let entryDate = Calendar.current.date(byAdding: .minute, value: minuteOffset, to: currentDate)!
-            let entry = getEntry(for: entryDate)
-            entries.append(entry)
-        }
-
-        let timeline = Timeline(entries: entries, policy: .after(Calendar.current.date(byAdding: .hour, value: 1, to: currentDate)!))
+    
+    func getSnapshot(in context: Context, completion: @escaping (WordEntry) -> ()) {
+        completion(getCurrentEntry())
+    }
+    
+    func getTimeline(in context: Context, completion: @escaping (Timeline<WordEntry>) -> ()) {
+        let entries = [getCurrentEntry()]
+        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 30, to: Date())!
+        let timeline = Timeline(entries: entries, policy: .after(nextUpdate))
         completion(timeline)
     }
     
-    private func getEntry(for date: Date = Date()) -> SimpleEntry {
+    private func getCurrentEntry() -> WordEntry {
         let hanzi = userDefaults?.string(forKey: "current_hanzi") ?? "学"
         let pinyin = userDefaults?.string(forKey: "current_pinyin") ?? "xué"
         let meaning = userDefaults?.string(forKey: "current_meaning") ?? "to learn"
-        let example = userDefaults?.string(forKey: "current_example") ?? "学习中文"
+        let example = userDefaults?.string(forKey: "current_example")
+        let hskLevel = userDefaults?.integer(forKey: "current_hsk_level") ?? 4
         
-        // Vietnamese translation
         let vietnameseMeaning = getVietnameseMeaning(meaning)
-        
-        // Get tone colors for pinyin
         let toneColors = getToneColors(pinyin)
+        let savedWords = userDefaults?.stringArray(forKey: "widget_saved_words") ?? []
+        let isSaved = savedWords.contains(hanzi)
         
-        return SimpleEntry(
-            date: date,
+        return WordEntry(
+            date: Date(),
             hanzi: hanzi,
             pinyin: pinyin,
-            meaning: meaning,
+            englishMeaning: meaning,
             vietnameseMeaning: vietnameseMeaning,
             example: example,
+            hskLevel: hskLevel,
+            isSaved: isSaved,
             toneColors: toneColors
         )
     }
     
     private func getVietnameseMeaning(_ english: String) -> String {
         let translations: [String: String] = [
-            "wide": "rộng",
-            "to learn": "học",
-            "good": "tốt",
-            "method": "phương pháp",
-            "help": "giúp đỡ",
-            "competition": "cuộc thi",
-            "express": "biểu đạt",
-            "change": "thay đổi",
-            "participate": "tham gia",
-            "be late": "trễ",
-            "plan": "kế hoạch",
-            "worry": "lo lắng"
+            "wide": "rộng", "method": "phương pháp", "help": "giúp đỡ",
+            "competition": "cuộc thi", "express": "biểu đạt", "change": "thay đổi",
+            "participate": "tham gia", "be late": "trễ", "plan": "kế hoạch",
+            "worry": "lo lắng", "learn": "học", "study": "học tập",
+            "good": "tốt", "beautiful": "đẹp", "big": "lớn", "small": "nhỏ"
         ]
         
         for (eng, viet) in translations {
@@ -133,381 +152,358 @@ struct Provider: TimelineProvider {
         let tone4 = ["à", "è", "ì", "ò", "ù", "ǜ"]
         
         for char in syllable {
-            if tone1.contains(where: { String(char).contains($0) }) { return 1 }
-            if tone2.contains(where: { String(char).contains($0) }) { return 2 }
-            if tone3.contains(where: { String(char).contains($0) }) { return 3 }
-            if tone4.contains(where: { String(char).contains($0) }) { return 4 }
+            let charStr = String(char)
+            if tone1.contains(where: { charStr.contains($0) }) { return 1 }
+            if tone2.contains(where: { charStr.contains($0) }) { return 2 }
+            if tone3.contains(where: { charStr.contains($0) }) { return 3 }
+            if tone4.contains(where: { charStr.contains($0) }) { return 4 }
         }
         return 0
     }
     
     private func getToneColor(_ tone: Int) -> Color {
         switch tone {
-        case 1: return .green
-        case 2: return .yellow
-        case 3: return .blue
-        case 4: return .red
-        default: return .primary
+        case 1: return Color(red: 0.2, green: 0.7, blue: 0.2) // Green
+        case 2: return Color(red: 0.9, green: 0.6, blue: 0.0) // Orange
+        case 3: return Color(red: 0.1, green: 0.5, blue: 0.8) // Blue
+        case 4: return Color(red: 0.8, green: 0.2, blue: 0.2) // Red
+        default: return Color.primary
         }
     }
 }
 
-// MARK: - Entry Model
-struct SimpleEntry: TimelineEntry {
-    let date: Date
-    let hanzi: String
-    let pinyin: String
-    let meaning: String
-    let vietnameseMeaning: String
-    let example: String?
-    let toneColors: [Color]
-}
-
 // MARK: - Widget Views
-struct WordWidgetEntryView : View {
-    var entry: Provider.Entry
+struct WordWidgetEntryView: View {
+    var entry: WordEntry
     @Environment(\.widgetFamily) var family
-    @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
         switch family {
         case .systemSmall:
-            SmallWidgetView(entry: entry)
+            SmallHomeWidget(entry: entry)
         case .systemMedium:
-            MediumWidgetView(entry: entry)
+            MediumHomeWidget(entry: entry)
         case .systemLarge:
-            LargeWidgetView(entry: entry)
+            LargeHomeWidget(entry: entry)
         case .accessoryCircular:
-            CircularWidgetView(entry: entry)
+            CircularLockScreenWidget(entry: entry)
         case .accessoryRectangular:
-            RectangularWidgetView(entry: entry)
+            RectangularLockScreenWidget(entry: entry)
         case .accessoryInline:
-            InlineWidgetView(entry: entry)
+            InlineLockScreenWidget(entry: entry)
         default:
-            SmallWidgetView(entry: entry)
+            SmallHomeWidget(entry: entry)
         }
     }
 }
 
-// MARK: - Small Widget (Chữ Hán lớn)
-struct SmallWidgetView: View {
-    let entry: SimpleEntry
-    @State private var showPinyin = false
+// MARK: - Home Screen Widgets
+struct SmallHomeWidget: View {
+    let entry: WordEntry
     
     var body: some View {
         ZStack {
-            // Background gradient
             LinearGradient(
-                colors: backgroundColors,
+                colors: [
+                    Color(red: 0.95, green: 0.97, blue: 1.0),
+                    Color(red: 0.98, green: 0.99, blue: 1.0)
+                ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
             
-            VStack(spacing: 4) {
-                // Label
+            VStack(spacing: 8) {
                 HStack {
-                    Text("今日词语")
-                        .font(.system(size: 10))
-                        .foregroundColor(.white.opacity(0.8))
-                    Text("📚")
-                        .font(.system(size: 10))
                     Spacer()
+                    Text("HSK\(entry.hskLevel)")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.blue)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(6)
                 }
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
                 
                 Spacer()
                 
-                // Main character (60-70% of space)
                 Text(entry.hanzi)
-                    .font(.custom("Noto Sans SC", size: 65))
-                    .fontWeight(.medium)
-                    .foregroundColor(.white)
-                    .minimumScaleFactor(0.5)
-                    .shadow(radius: 2)
-                    .transition(.scale.combined(with: .opacity))
+                    .font(.system(size: 50, weight: .medium))
+                    .foregroundColor(.primary)
+                    .minimumScaleFactor(0.6)
                 
-                // Pinyin (optional, tap to show)
-                if showPinyin {
-                    Text(entry.pinyin)
-                        .font(.system(size: 14))
-                        .foregroundColor(.white.opacity(0.9))
-                        .transition(.opacity)
+                HStack(spacing: 1) {
+                    ForEach(Array(entry.pinyin.split(separator: " ").enumerated()), id: \.offset) { index, syllable in
+                        Text(String(syllable))
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(index < entry.toneColors.count ? entry.toneColors[index] : .secondary)
+                    }
                 }
                 
                 Spacer()
                 
-                // Navigation hint
-                Image(systemName: "chevron.left.chevron.right")
-                    .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.6))
-                    .padding(.bottom, 8)
+                Text(entry.vietnameseMeaning)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.primary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                
+                HStack(spacing: 4) {
+                    ForEach(0..<3) { index in
+                        Circle()
+                            .fill(Color.blue.opacity(index == 2 ? 1.0 : 0.3))
+                            .frame(width: 4, height: 4)
+                    }
+                }
+                .padding(.bottom, 12)
             }
         }
         .widgetURL(URL(string: "chineseword://widget/word/\(entry.hanzi)"))
-        .containerBackground(for: .widget) {
-            Color.clear
-        }
-        .onTapGesture {
-            withAnimation {
-                showPinyin.toggle()
-            }
-        }
-    }
-    
-    var backgroundColors: [Color] {
-        [Color(red: 0.1, green: 0.7, blue: 0.6),
-         Color(red: 0.9, green: 0.8, blue: 0.3)]
     }
 }
 
-// MARK: - Medium Widget (Chữ + Pinyin + Nghĩa)
-struct MediumWidgetView: View {
-    let entry: SimpleEntry
+struct MediumHomeWidget: View {
+    let entry: WordEntry
     
     var body: some View {
-        ZStack {
-            // Background
-            LinearGradient(
-                colors: [Color.teal.opacity(0.3), Color.yellow.opacity(0.2)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            
-            HStack(spacing: 20) {
-                // Left: Character section
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(entry.hanzi)
-                        .font(.custom("Noto Sans SC", size: 50))
-                        .fontWeight(.medium)
-                        .foregroundColor(.primary)
-                        .minimumScaleFactor(0.7)
-                    
-                    // Pinyin with tone colors
-                    HStack(spacing: 2) {
-                        ForEach(Array(entry.pinyin.split(separator: " ").enumerated()), id: \.offset) { index, syllable in
-                            Text(String(syllable))
-                                .font(.system(size: 18))
-                                .foregroundColor(index < entry.toneColors.count ? entry.toneColors[index] : .primary)
-                        }
+        HStack(spacing: 20) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("HSK \(entry.hskLevel)")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.blue)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(8)
+                
+                Text(entry.hanzi)
+                    .font(.system(size: 44, weight: .medium))
+                    .foregroundColor(.primary)
+                
+                HStack(spacing: 2) {
+                    ForEach(Array(entry.pinyin.split(separator: " ").enumerated()), id: \.offset) { index, syllable in
+                        Text(String(syllable))
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(index < entry.toneColors.count ? entry.toneColors[index] : .secondary)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            
+            Spacer()
+            
+            VStack(alignment: .trailing, spacing: 12) {
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(entry.vietnameseMeaning)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .multilineTextAlignment(.trailing)
+                    
+                    Text(entry.englishMeaning)
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.trailing)
+                }
                 
                 Spacer()
                 
-                // Right: Meaning section
-                VStack(alignment: .trailing, spacing: 8) {
-                    Text(entry.vietnameseMeaning)
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(.primary)
+                HStack(spacing: 12) {
+                    Button(intent: SaveWordIntent()) {
+                        Image(systemName: entry.isSaved ? "heart.fill" : "heart")
+                            .font(.system(size: 18))
+                            .foregroundColor(entry.isSaved ? .red : .gray)
+                    }
+                    .buttonStyle(PlainButtonStyle())
                     
-                    Text(entry.meaning)
-                        .font(.system(size: 14))
-                        .foregroundColor(.secondary)
-                        .italic()
-                    
-                    // Audio button
-                    Button(intent: ChangeWordIntent()) {
-                        Image(systemName: "speaker.wave.2.fill")
-                            .font(.system(size: 20))
+                    Button(intent: NextWordIntent()) {
+                        Image(systemName: "arrow.right.circle.fill")
+                            .font(.system(size: 18))
                             .foregroundColor(.blue)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlainButtonStyle())
                 }
             }
-            .padding()
         }
+        .padding()
         .widgetURL(URL(string: "chineseword://widget/word/\(entry.hanzi)"))
-        .containerBackground(for: .widget) {
-            Color(UIColor.systemBackground)
-        }
     }
 }
 
-// MARK: - Large Widget (Full learning experience)
-struct LargeWidgetView: View {
-    let entry: SimpleEntry
-    @State private var savedWords: Set<String> = []
+struct LargeHomeWidget: View {
+    let entry: WordEntry
     
     var body: some View {
-        ZStack {
-            // Gradient background
-            LinearGradient(
-                colors: [Color.teal.opacity(0.2), Color.yellow.opacity(0.1)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            
-            VStack(spacing: 16) {
-                // Header
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("今日词语 📚")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Text("HSK 5")
-                            .font(.caption2)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 2)
-                            .background(Color.purple.opacity(0.2))
-                            .foregroundColor(.purple)
-                            .cornerRadius(8)
-                    }
-                    
-                    Spacer()
-                    
-                    // Save button
-                    Button(intent: ChangeWordIntent()) {
-                        Image(systemName: savedWords.contains(entry.hanzi) ? "heart.fill" : "heart")
-                            .font(.title3)
-                            .foregroundColor(savedWords.contains(entry.hanzi) ? .red : .gray)
-                    }
-                    .buttonStyle(.plain)
-                }
-                
-                // Main content
-                VStack(spacing: 12) {
-                    // Character
-                    Text(entry.hanzi)
-                        .font(.custom("Noto Sans SC", size: 80))
-                        .fontWeight(.medium)
-                        .foregroundColor(.primary)
-                    
-                    // Pinyin with tones
-                    HStack(spacing: 4) {
-                        ForEach(Array(entry.pinyin.split(separator: " ").enumerated()), id: \.offset) { index, syllable in
-                            Text(String(syllable))
-                                .font(.system(size: 24))
-                                .foregroundColor(index < entry.toneColors.count ? entry.toneColors[index] : .primary)
-                        }
-                    }
-                    
-                    // Meanings
-                    VStack(spacing: 4) {
-                        Text(entry.vietnameseMeaning)
-                            .font(.system(size: 22, weight: .medium))
-                        Text(entry.meaning)
-                            .font(.system(size: 16))
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    // Example sentence
-                    if let example = entry.example {
-                        VStack(spacing: 4) {
-                            Divider()
-                                .padding(.horizontal, 40)
-                            
-                            Text(example)
-                                .font(.system(size: 18))
-                                .foregroundColor(.primary)
-                            
-                            Text("Căn phòng rất rộng")
-                                .font(.system(size: 14))
-                                .foregroundColor(.blue)
-                                .italic()
-                        }
-                        .padding(.top, 8)
-                    }
-                }
+        VStack(spacing: 16) {
+            HStack {
+                Text("今日词汇 📚")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
                 
                 Spacer()
                 
-                // Bottom controls
-                HStack {
-                    // Audio button
-                    Button(intent: ChangeWordIntent()) {
-                        Label("Phát âm", systemImage: "speaker.wave.2.fill")
+                HStack(spacing: 8) {
+                    if entry.isSaved {
+                        Image(systemName: "heart.fill")
                             .font(.caption)
+                            .foregroundColor(.red)
                     }
-                    .buttonStyle(.bordered)
-                    .tint(.blue)
                     
-                    Spacer()
-                    
-                    // Next word button
-                    Button(intent: ChangeWordIntent()) {
-                        Label("Từ tiếp", systemImage: "arrow.right.circle.fill")
-                            .font(.caption)
-                    }
-                    .buttonStyle(.borderedProminent)
+                    Text("HSK \(entry.hskLevel)")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.blue)
+                        .cornerRadius(8)
                 }
             }
-            .padding()
+            
+            Text(entry.hanzi)
+                .font(.system(size: 64, weight: .medium))
+                .foregroundColor(.primary)
+            
+            HStack(spacing: 4) {
+                ForEach(Array(entry.pinyin.split(separator: " ").enumerated()), id: \.offset) { index, syllable in
+                    Text(String(syllable))
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundColor(index < entry.toneColors.count ? entry.toneColors[index] : .secondary)
+                }
+            }
+            
+            VStack(spacing: 6) {
+                Text(entry.vietnameseMeaning)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(.primary)
+                
+                Text(entry.englishMeaning)
+                    .font(.system(size: 15))
+                    .foregroundColor(.secondary)
+            }
+            
+            if let example = entry.example {
+                VStack(spacing: 8) {
+                    Divider()
+                        .padding(.horizontal, 30)
+                    
+                    VStack(spacing: 4) {
+                        Text(example)
+                            .font(.system(size: 16))
+                            .foregroundColor(.primary)
+                            .multilineTextAlignment(.center)
+                        
+                        Text("Ví dụ • Example")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            
+            Spacer()
+            
+            HStack(spacing: 20) {
+                Button(intent: SaveWordIntent()) {
+                    Label(entry.isSaved ? "Đã lưu" : "Lưu từ", systemImage: entry.isSaved ? "heart.fill" : "heart")
+                        .font(.caption)
+                        .foregroundColor(entry.isSaved ? .red : .blue)
+                }
+                .buttonStyle(PlainButtonStyle())
+                
+                Spacer()
+                
+                Button(intent: NextWordIntent()) {
+                    Label("Từ tiếp theo", systemImage: "arrow.right.circle")
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
         }
+        .padding()
         .widgetURL(URL(string: "chineseword://widget/word/\(entry.hanzi)"))
         .containerBackground(for: .widget) {
-            Color(UIColor.systemBackground)
+            LinearGradient(
+                colors: [
+                    Color(red: 0.98, green: 0.99, blue: 1.0),
+                    Color(red: 0.95, green: 0.98, blue: 1.0)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         }
     }
 }
 
 // MARK: - Lock Screen Widgets
-struct CircularWidgetView: View {
-    let entry: SimpleEntry
+struct CircularLockScreenWidget: View {
+    let entry: WordEntry
     
     var body: some View {
         ZStack {
             Circle()
-                .fill(Color.blue.opacity(0.2))
+                .fill(Color.blue.opacity(0.1))
             
-            VStack(spacing: 2) {
-                Text(entry.hanzi)
-                    .font(.system(size: 28, weight: .bold))
-                    .minimumScaleFactor(0.5)
-                
-                Text("HSK")
-                    .font(.system(size: 8))
-                    .foregroundColor(.secondary)
-            }
+            Text(entry.hanzi)
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundColor(.primary)
+                .minimumScaleFactor(0.5)
         }
+        .widgetURL(URL(string: "chineseword://lockscreen/\(entry.hanzi)"))
     }
 }
 
-struct RectangularWidgetView: View {
-    let entry: SimpleEntry
+struct RectangularLockScreenWidget: View {
+    let entry: WordEntry
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(entry.hanzi)
-                    .font(.system(size: 22, weight: .medium))
+        HStack(spacing: 8) {
+            Text(entry.hanzi)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundColor(.primary)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.pinyin)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
                 
-                Spacer()
-                
-                Text("📚")
+                Text(entry.vietnameseMeaning)
                     .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.blue)
+                    .lineLimit(1)
             }
             
-            Text(entry.pinyin)
-                .font(.caption)
-                .foregroundColor(.secondary)
+            Spacer()
             
-            Text(entry.vietnameseMeaning)
+            Text("HSK\(entry.hskLevel)")
                 .font(.caption2)
-                .foregroundColor(.blue)
+                .foregroundColor(.secondary)
         }
+        .widgetURL(URL(string: "chineseword://lockscreen/\(entry.hanzi)"))
     }
 }
 
-struct InlineWidgetView: View {
-    let entry: SimpleEntry
+struct InlineLockScreenWidget: View {
+    let entry: WordEntry
     
     var body: some View {
         Text("\(entry.hanzi) • \(entry.vietnameseMeaning)")
+            .font(.caption)
+            .widgetURL(URL(string: "chineseword://lockscreen/\(entry.hanzi)"))
     }
 }
 
 // MARK: - Widget Configuration
 struct WordWidget: Widget {
     let kind: String = "WordWidget"
-
+    
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: kind, provider: Provider()) { entry in
+        StaticConfiguration(kind: kind, provider: WordTimelineProvider()) { entry in
             WordWidgetEntryView(entry: entry)
         }
-        .configurationDisplayName("中文词汇")
-        .description("锁屏学习中文词汇 - Học từ vựng tiếng Trung")
+        .configurationDisplayName("Chinese Word • 中文词汇")
+        .description("Học từ vựng tiếng Trung mọi lúc mọi nơi")
         .supportedFamilies([
             .systemSmall,
             .systemMedium,
@@ -520,45 +516,15 @@ struct WordWidget: Widget {
     }
 }
 
-// MARK: - Preview
+// MARK: - Previews
 #Preview(as: .systemSmall) {
     WordWidget()
 } timeline: {
-    SimpleEntry(
-        date: .now,
-        hanzi: "宽",
-        pinyin: "kuān",
-        meaning: "wide",
-        vietnameseMeaning: "rộng",
-        example: "房间很宽",
-        toneColors: [.green]
-    )
+    WordEntry.placeholder()
 }
 
 #Preview(as: .systemMedium) {
     WordWidget()
 } timeline: {
-    SimpleEntry(
-        date: .now,
-        hanzi: "学习",
-        pinyin: "xué xí",
-        meaning: "to study",
-        vietnameseMeaning: "học tập",
-        example: "学习中文",
-        toneColors: [.yellow, .yellow]
-    )
-}
-
-#Preview(as: .systemLarge) {
-    WordWidget()
-} timeline: {
-    SimpleEntry(
-        date: .now,
-        hanzi: "帮助",
-        pinyin: "bāng zhù",
-        meaning: "to help",
-        vietnameseMeaning: "giúp đỡ",
-        example: "谢谢你的帮助",
-        toneColors: [.green, .red]
-    )
+    WordEntry.placeholder()
 }
