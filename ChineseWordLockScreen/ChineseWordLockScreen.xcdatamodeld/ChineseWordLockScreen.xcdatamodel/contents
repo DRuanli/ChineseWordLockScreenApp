@@ -3,6 +3,20 @@
     <entity name="Item" representedClassName="Item" syncable="YES" codeGenerationType="class">
         <attribute name="timestamp" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
     </entity>
+    <entity name="User" representedClassName="User" syncable="YES" codeGenerationType="class">
+        <attribute name="userId" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="username" optional="YES" attributeType="String"/>
+        <attribute name="email" optional="YES" attributeType="String"/>
+        <attribute name="passwordHash" optional="YES" attributeType="String"/>
+        <attribute name="createdAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="lastLoginAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="preferredHSKLevel" optional="YES" attributeType="Integer 16" defaultValueString="5" usesScalarValueType="YES"/>
+        <attribute name="dailyGoal" optional="YES" attributeType="Integer 16" defaultValueString="10" usesScalarValueType="YES"/>
+        <attribute name="notificationEnabled" optional="YES" attributeType="Boolean" defaultValueString="YES" usesScalarValueType="YES"/>
+        <attribute name="notificationFrequency" optional="YES" attributeType="Integer 16" defaultValueString="3" usesScalarValueType="YES"/>
+        <relationship name="savedWords" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="SavedWord" inverseName="user" inverseEntity="SavedWord"/>
+        <relationship name="studyProgress" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="StudyProgress" inverseName="user" inverseEntity="StudyProgress"/>
+    </entity>
     <entity name="SavedWord" representedClassName="SavedWord" syncable="YES" codeGenerationType="class">
         <attribute name="hanzi" optional="YES" attributeType="String"/>
         <attribute name="pinyin" optional="YES" attributeType="String"/>
@@ -12,15 +26,18 @@
         <attribute name="savedDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="isFavorite" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
         <attribute name="reviewCount" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <relationship name="user" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="User" inverseName="savedWords" inverseEntity="User"/>
     </entity>
     <entity name="StudyProgress" representedClassName="StudyProgress" syncable="YES" codeGenerationType="class">
         <attribute name="date" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="wordsLearned" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="streak" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <relationship name="user" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="User" inverseName="studyProgress" inverseEntity="User"/>
     </entity>
     <elements>
         <element name="Item" positionX="-63" positionY="-18" width="128" height="44"/>
-        <element name="SavedWord" positionX="-63" positionY="18" width="128" height="149"/>
-        <element name="StudyProgress" positionX="-63" positionY="72" width="128" height="74"/>
+        <element name="User" positionX="-263" positionY="18" width="128" height="209"/>
+        <element name="SavedWord" positionX="-63" positionY="18" width="128" height="164"/>
+        <element name="StudyProgress" positionX="-63" positionY="200" width="128" height="89"/>
     </elements>
 </model>
