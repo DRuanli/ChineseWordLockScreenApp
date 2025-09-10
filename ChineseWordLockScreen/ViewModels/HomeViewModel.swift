@@ -2,7 +2,7 @@
 //  HomeViewModel.swift
 //  ChineseWordLockScreen
 //
-//  Created by Lê Nguyễn on 9/9/25.
+//  Enhanced with Vietnamese support and audio controls
 //
 
 import Foundation
@@ -14,12 +14,15 @@ class HomeViewModel: ObservableObject {
     @Published var currentWord: HSKWord
     @Published var isSaved: Bool = false
     @Published var showingDefinition: Bool = true
+    @Published var wordHistory: [HSKWord] = []
+    @Published var currentIndex: Int = 0
     
     private let wordDataManager = WordDataManager.shared
     private let synthesizer = AVSpeechSynthesizer()
     
     init() {
         self.currentWord = HSKDatabaseSeeder.shared.getWordOfDay()
+        self.wordHistory.append(currentWord)
         checkIfSaved()
     }
     
@@ -60,16 +63,36 @@ class HomeViewModel: ObservableObject {
     }
     
     func speakWord() {
+        synthesizer.stopSpeaking(at: .immediate)
         let utterance = AVSpeechUtterance(string: currentWord.hanzi)
         utterance.voice = AVSpeechSynthesisVoice(language: "zh-CN")
         utterance.rate = 0.4
         synthesizer.speak(utterance)
     }
     
+    func speakWordSlow() {
+        synthesizer.stopSpeaking(at: .immediate)
+        let utterance = AVSpeechUtterance(string: currentWord.hanzi)
+        utterance.voice = AVSpeechSynthesisVoice(language: "zh-CN")
+        utterance.rate = 0.2 // Slower rate for long press
+        synthesizer.speak(utterance)
+    }
+    
     func getNextWord() {
         currentWord = HSKDatabaseSeeder.shared.getRandomWord()
+        wordHistory.append(currentWord)
+        currentIndex = wordHistory.count - 1
         checkIfSaved()
         wordDataManager.saveToUserDefaults(word: currentWord)
+    }
+    
+    func getPreviousWord() {
+        if currentIndex > 0 {
+            currentIndex -= 1
+            currentWord = wordHistory[currentIndex]
+            checkIfSaved()
+            wordDataManager.saveToUserDefaults(word: currentWord)
+        }
     }
     
     func toggleDefinition() {
