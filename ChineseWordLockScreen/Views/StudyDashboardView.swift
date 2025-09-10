@@ -11,6 +11,7 @@ struct StudyDashboardView: View {
     @StateObject private var wordDataManager = WordDataManager.shared
     @StateObject private var authManager = AuthenticationManager.shared
     @State private var showingFullFlashcard = false
+    @State private var showingQuickStudy = false
     
     var body: some View {
         NavigationView {
@@ -25,7 +26,10 @@ struct StudyDashboardView: View {
                     )
                     
                     // Quick Actions Grid
-                    QuickActionsGrid(showingFullFlashcard: $showingFullFlashcard)
+                    QuickActionsGrid(
+                        showingFullFlashcard: $showingFullFlashcard,
+                        showingQuickStudy: $showingQuickStudy
+                    )
                     
                     // Review Today Section
                     if !wordDataManager.wordsForReview.isEmpty {
@@ -44,13 +48,16 @@ struct StudyDashboardView: View {
         .sheet(isPresented: $showingFullFlashcard) {
             FlashcardSessionView()
         }
+        .sheet(isPresented: $showingQuickStudy) {
+            QuickStudyView()
+        }
         .onAppear {
             wordDataManager.refreshData()
         }
     }
 }
 
-: - Study Stats Header
+// MARK: - Study Stats Header
 struct StudyStatsHeader: View {
     let todayCount: Int
     let streak: Int
@@ -111,23 +118,23 @@ struct StudyStatsHeader: View {
             // Stats row
             HStack(spacing: 15) {
                 StatCard(
-                    icon: "flame.fill",
-                    title: "Streak",
-                    value: "\(streak)",
+                    title: "flame.fill",
+                    value: "Streak",
+                    icon: "\(streak)",
                     color: .orange
                 )
                 
                 StatCard(
-                    icon: "books.vertical.fill",
-                    title: "Tổng từ",
-                    value: "\(totalWords)",
+                    title: "books.vertical.fill",
+                    value: "Tổng từ",
+                    icon: "\(totalWords)",
                     color: .blue
                 )
                 
                 StatCard(
-                    icon: "calendar",
-                    title: "Tuần này",
-                    value: "45", // Calculate weekly count
+                    title: "calendar",
+                    value: "Tuần này",
+                    icon: "45", // Calculate weekly count
                     color: .purple
                 )
             }
@@ -157,36 +164,6 @@ struct CircularProgressView: View {
                 .font(.caption)
                 .fontWeight(.semibold)
         }
-    }
-}
-
-// MARK: - Stat Card
-struct StatCard: View {
-    let icon: String
-    let title: String
-    let value: String
-    let color: Color
-    
-    var body: some View {
-        VStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.title2)
-                .foregroundColor(color)
-            
-            Text(value)
-                .font(.headline)
-                .fontWeight(.bold)
-            
-            Text(title)
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(color.opacity(0.1))
-        )
     }
 }
 
@@ -371,17 +348,36 @@ struct RecentActivitySection: View {
                 .font(.headline)
                 .fontWeight(.semibold)
             
-            VStack(spacing: 8) {
-                ForEach(recentWords, id: \.self) { word in
-                    RecentActivityRow(word: word)
+            if recentWords.isEmpty {
+                VStack(spacing: 10) {
+                    Image(systemName: "book.closed")
+                        .font(.largeTitle)
+                        .foregroundColor(.gray.opacity(0.5))
+                    
+                    Text("Chưa có từ vựng nào")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
                 }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 40)
+                .background(
+                    RoundedRectangle(cornerRadius: 15)
+                        .fill(Color.white)
+                        .shadow(color: .black.opacity(0.05), radius: 5)
+                )
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(recentWords, id: \.self) { word in
+                        RecentActivityRow(word: word)
+                    }
+                }
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 15)
+                        .fill(Color.white)
+                        .shadow(color: .black.opacity(0.05), radius: 5)
+                )
             }
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 15)
-                    .fill(Color.white)
-                    .shadow(color: .black.opacity(0.05), radius: 5)
-            )
         }
     }
 }
@@ -419,12 +415,11 @@ struct RecentActivityRow: View {
     
     private func timeAgoString(from date: Date) -> String {
         let formatter = RelativeDateTimeFormatter()
-        formatter.timeStyle = .numeric
         return formatter.localizedString(for: date, relativeTo: Date())
     }
 }
 
-// MARK: - Flashcard Session View (Simplified)
+// MARK: - Flashcard Session View
 struct FlashcardSessionView: View {
     @Environment(\.dismiss) var dismiss
     @StateObject private var wordDataManager = WordDataManager.shared
@@ -494,4 +489,55 @@ struct FlashcardSessionView: View {
                             Button(action: nextCard) {
                                 Image(systemName: "chevron.right.circle.fill")
                                     .font(.largeTitle)
-                                
+                                    .foregroundColor(.blue)
+                            }
+                            .disabled(currentIndex >= wordDataManager.savedWords.count - 1)
+                        }
+                    }
+                } else {
+                    VStack(spacing: 20) {
+                        Image(systemName: "rectangle.stack")
+                            .font(.system(size: 80))
+                            .foregroundColor(.gray)
+                        
+                        Text("Chưa có từ vựng để ôn tập")
+                            .font(.title3)
+                            .foregroundColor(.secondary)
+                        
+                        Text("Hãy lưu một số từ vựng để bắt đầu flashcard")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxHeight: .infinity)
+                }
+            }
+            .padding()
+            .navigationTitle("Flashcards")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Đóng") { dismiss() }
+                }
+            }
+        }
+    }
+    
+    private func nextCard() {
+        if currentIndex < wordDataManager.savedWords.count - 1 {
+            currentIndex += 1
+            showingAnswer = false
+        }
+    }
+    
+    private func previousCard() {
+        if currentIndex > 0 {
+            currentIndex -= 1
+            showingAnswer = false
+        }
+    }
+}
+
+#Preview {
+    StudyDashboardView()
+}

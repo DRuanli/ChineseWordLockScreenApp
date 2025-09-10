@@ -2,7 +2,7 @@
 //  LibraryView.swift
 //  ChineseWordLockScreen
 //
-//  Enhanced version with complete features
+//  Enhanced library with comprehensive filtering and organization
 //
 
 import SwiftUI
@@ -11,94 +11,119 @@ import CoreData
 struct LibraryView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @StateObject private var wordDataManager = WordDataManager.shared
+    @StateObject private var authManager = AuthenticationManager.shared
     
-    @State private var selectedTab = 0
+    // View states
+    @State private var selectedSection: LibrarySection = .myWords
     @State private var searchText = ""
-    @State private var selectedHSKFilter: Int? = nil
-    @State private var selectedWordType: WordType? = nil
-    @State private var showingFlashcardMode = false
-    @State private var showingExportSheet = false
-    @State private var showingCreateFolder = false
+    @State private var viewMode: ViewMode = .grid
     @State private var sortOption: SortOption = .recentlyAdded
-    @State private var viewMode: ViewMode = .list
+    @State private var selectedHSKLevels: Set<Int> = []
+    @State private var showOnlyFavorites = false
+    @State private var showOnlyDifficult = false
+    @State private var selectedFolder: PersonalFolder?
+    @State private var showingCreateFolder = false
+    @State private var showingFilterSheet = false
+    @State private var showingExportSheet = false
     @State private var selectedWords: Set<SavedWord> = []
     @State private var isMultiSelectMode = false
     
-    @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \SavedWord.savedDate, ascending: false)],
-        animation: .default)
-    private var allSavedWords: FetchedResults<SavedWord>
-    
-    enum WordType: String, CaseIterable {
-        case noun = "名词"
-        case verb = "动词"
-        case adjective = "形容词"
-        case all = "全部"
-    }
-    
-    enum SortOption: String, CaseIterable {
-        case recentlyAdded = "最新添加"
-        case mostStudied = "最常学习"
-        case leastStudied = "最少学习"
-        case alphabetical = "字母顺序"
-        case hskLevel = "HSK级别"
+    // Enums
+    enum LibrarySection: String, CaseIterable {
+        case myWords = "Từ của tôi"
+        case hskLevels = "HSK 1-6"
+        case folders = "Thư mục"
+        case topics = "Chủ đề"
+        
+        var icon: String {
+            switch self {
+            case .myWords: return "star.fill"
+            case .hskLevels: return "graduationcap.fill"
+            case .folders: return "folder.fill"
+            case .topics: return "tag.fill"
+            }
+        }
     }
     
     enum ViewMode: String, CaseIterable {
-        case list = "列表"
-        case grid = "网格"
+        case grid = "Lưới"
+        case list = "Danh sách"
+        
+        var icon: String {
+            switch self {
+            case .grid: return "square.grid.2x2"
+            case .list: return "list.bullet"
+            }
+        }
     }
     
+    enum SortOption: String, CaseIterable {
+        case recentlyAdded = "Mới thêm"
+        case alphabetical = "A-Z"
+        case mostStudied = "Học nhiều"
+        case difficulty = "Độ khó"
+    }
+    
+    // Computed properties
     var filteredWords: [SavedWord] {
-        let baseFilter = { (word: SavedWord) -> Bool in
-            // Tab filter
-            switch selectedTab {
-            case 1: // Favorites
-                guard word.isFavorite else { return false }
-            case 2: // Hard Words
-                guard word.incorrectCount > word.correctCount else { return false }
-            default:
-                break
+        let baseWords: [SavedWord]
+        
+        switch selectedSection {
+        case .myWords:
+            baseWords = wordDataManager.savedWords
+        case .hskLevels:
+            if selectedHSKLevels.isEmpty {
+                baseWords = wordDataManager.savedWords
+            } else {
+                baseWords = wordDataManager.savedWords.filter { selectedHSKLevels.contains(Int($0.hskLevel)) }
             }
-            
-            // Search filter
-            if !searchText.isEmpty {
-                let searchLower = searchText.lowercased()
-                let matchesSearch = (word.hanzi?.contains(searchText) ?? false) ||
-                                   (word.pinyin?.lowercased().contains(searchLower) ?? false) ||
-                                   (word.meaning?.lowercased().contains(searchLower) ?? false)
-                guard matchesSearch else { return false }
+        case .folders:
+            if let folder = selectedFolder {
+                baseWords = folder.words as? [SavedWord] ?? []
+            } else {
+                baseWords = []
             }
-            
-            // HSK filter
-            if let hskFilter = selectedHSKFilter {
-                guard word.hskLevel == hskFilter else { return false }
-            }
-            
-            return true
+        case .topics:
+            baseWords = wordDataManager.savedWords // Filter by topic tags
         }
         
-        var filtered = allSavedWords.filter(baseFilter)
+        var filtered = baseWords
         
-        // Sort
+        // Apply search
+        if !searchText.isEmpty {
+            filtered = filtered.filter { word in
+                (word.hanzi?.contains(searchText) ?? false) ||
+                (word.pinyin?.lowercased().contains(searchText.lowercased()) ?? false) ||
+                (word.meaning?.lowercased().contains(searchText.lowercased()) ?? false)
+            }
+        }
+        
+        // Apply filters
+        if showOnlyFavorites {
+            filtered = filtered.filter { $0.isFavorite }
+        }
+        
+        if showOnlyDifficult {
+            filtered = filtered.filter { $0.incorrectCount > $0.correctCount }
+        }
+        
+        // Apply sorting
         switch sortOption {
         case .recentlyAdded:
             filtered.sort { ($0.savedDate ?? Date()) > ($1.savedDate ?? Date()) }
-        case .mostStudied:
-            filtered.sort { $0.reviewCount > $1.reviewCount }
-        case .leastStudied:
-            filtered.sort { $0.reviewCount < $1.reviewCount }
         case .alphabetical:
             filtered.sort { ($0.pinyin ?? "") < ($1.pinyin ?? "") }
-        case .hskLevel:
-            filtered.sort { $0.hskLevel < $1.hskLevel }
+        case .mostStudied:
+            filtered.sort { $0.reviewCount > $1.reviewCount }
+        case .difficulty:
+            filtered.sort {
+                let diff1 = $0.incorrectCount > 0 ? Double($0.incorrectCount) / Double($0.correctCount + $0.incorrectCount) : 0
+                let diff2 = $1.incorrectCount > 0 ? Double($1.incorrectCount) / Double($1.correctCount + $1.incorrectCount) : 0
+                return diff1 > diff2
+            }
         }
         
         return filtered
-    }
-    
-    var reviewTodayCount: Int {
-        wordDataManager.wordsForReview.count
     }
     
     var body: some View {
@@ -108,199 +133,165 @@ struct LibraryView: View {
                     .ignoresSafeArea()
                 
                 VStack(spacing: 0) {
-                    // Custom Tab Bar
-                    LibraryTabBar(selectedTab: $selectedTab)
+                    // Section Tabs
+                    SectionTabBar(selectedSection: $selectedSection)
                     
                     // Search and Filter Bar
-                    SearchFilterBar(
+                    SearchAndFilterBar(
                         searchText: $searchText,
-                        selectedHSKFilter: $selectedHSKFilter,
-                        selectedWordType: $selectedWordType,
-                        sortOption: $sortOption,
-                        viewMode: $viewMode
+                        viewMode: $viewMode,
+                        showingFilterSheet: $showingFilterSheet
                     )
                     
-                    // Review Today Badge
-                    if reviewTodayCount > 0 && selectedTab == 0 {
-                        ReviewTodayBadge(count: reviewTodayCount) {
-                            showingFlashcardMode = true
-                        }
-                    }
-                    
-                    // Words List/Grid
-                    if filteredWords.isEmpty {
-                        EmptyLibraryView(tab: selectedTab)
-                    } else {
-                        if viewMode == .list {
-                            WordListView(
+                    // Content based on section
+                    Group {
+                        switch selectedSection {
+                        case .myWords:
+                            MyWordsContent(
                                 words: filteredWords,
+                                viewMode: viewMode,
                                 selectedWords: $selectedWords,
                                 isMultiSelectMode: $isMultiSelectMode
                             )
-                        } else {
-                            WordGridView(
+                        case .hskLevels:
+                            HSKLevelsContent(
                                 words: filteredWords,
-                                selectedWords: $selectedWords,
-                                isMultiSelectMode: $isMultiSelectMode
+                                selectedLevels: $selectedHSKLevels,
+                                viewMode: viewMode
+                            )
+                        case .folders:
+                            FoldersContent(
+                                selectedFolder: $selectedFolder,
+                                words: filteredWords,
+                                viewMode: viewMode,
+                                showingCreateFolder: $showingCreateFolder
+                            )
+                        case .topics:
+                            TopicsContent(
+                                words: filteredWords,
+                                viewMode: viewMode
                             )
                         }
                     }
                 }
             }
-            .navigationTitle("我的词库")
+            .navigationTitle("Thư viện từ vựng")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    if isMultiSelectMode {
-                        Button("取消") {
-                            isMultiSelectMode = false
-                            selectedWords.removeAll()
-                        }
-                    }
-                }
-                
-                ToolbarItemGroup(placement: .navigationBarTrailing) {
-                    if isMultiSelectMode {
-                        Button("全选") {
-                            selectedWords = Set(filteredWords)
-                        }
-                    } else {
-                        Menu {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        if isMultiSelectMode {
+                            Button("Hủy chọn") {
+                                isMultiSelectMode = false
+                                selectedWords.removeAll()
+                            }
+                        } else {
                             Button {
-                                showingFlashcardMode = true
+                                isMultiSelectMode = true
                             } label: {
-                                Label("Flashcard模式", systemImage: "rectangle.stack")
+                                Label("Chọn nhiều", systemImage: "checkmark.circle")
                             }
                             
                             Button {
                                 showingExportSheet = true
                             } label: {
-                                Label("导出CSV", systemImage: "square.and.arrow.up")
+                                Label("Xuất CSV", systemImage: "square.and.arrow.up")
                             }
-                            
-                            Button {
-                                isMultiSelectMode = true
-                            } label: {
-                                Label("多选", systemImage: "checkmark.circle")
-                            }
-                            
-                            Button {
-                                showingCreateFolder = true
-                            } label: {
-                                Label("新建文件夹", systemImage: "folder.badge.plus")
-                            }
-                        } label: {
-                            Image(systemName: "ellipsis.circle")
                         }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
                     }
                 }
             }
-            .sheet(isPresented: $showingFlashcardMode) {
-                FlashcardModeView(words: Array(filteredWords))
-            }
-            .sheet(isPresented: $showingExportSheet) {
-                ExportView(words: Array(selectedWords.isEmpty ? Set(filteredWords) : selectedWords))
+            .sheet(isPresented: $showingFilterSheet) {
+                FilterSheet(
+                    sortOption: $sortOption,
+                    showOnlyFavorites: $showOnlyFavorites,
+                    showOnlyDifficult: $showOnlyDifficult
+                )
             }
             .sheet(isPresented: $showingCreateFolder) {
                 CreateFolderView()
             }
-            .overlay(
-                // Multi-select bottom bar
-                isMultiSelectMode && !selectedWords.isEmpty ?
-                MultiSelectBottomBar(
-                    selectedCount: selectedWords.count,
-                    onDelete: deleteSelectedWords,
-                    onExport: exportSelectedWords,
-                    onAddToFolder: addSelectedToFolder
-                ) : nil,
-                alignment: .bottom
-            )
+            .sheet(isPresented: $showingExportSheet) {
+                ExportView(words: Array(selectedWords.isEmpty ? Set(filteredWords) : selectedWords))
+            }
         }
-    }
-    
-    private func deleteSelectedWords() {
-        withAnimation {
-            selectedWords.forEach { viewContext.delete($0) }
-            try? viewContext.save()
-            selectedWords.removeAll()
-            isMultiSelectMode = false
-            wordDataManager.fetchSavedWords()
-        }
-    }
-    
-    private func exportSelectedWords() {
-        showingExportSheet = true
-    }
-    
-    private func addSelectedToFolder() {
-        // Implementation for folder management
     }
 }
 
-// MARK: - Tab Bar
-struct LibraryTabBar: View {
-    @Binding var selectedTab: Int
+// MARK: - Section Tab Bar
+struct SectionTabBar: View {
+    @Binding var selectedSection: LibraryView.LibrarySection
     
     var body: some View {
-        HStack(spacing: 0) {
-            TabButton(title: "All Words", isSelected: selectedTab == 0) {
-                selectedTab = 0
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 20) {
+                ForEach(LibraryView.LibrarySection.allCases, id: \.self) { section in
+                    SectionTab(
+                        section: section,
+                        isSelected: selectedSection == section
+                    ) {
+                        withAnimation(.spring()) {
+                            selectedSection = section
+                        }
+                    }
+                }
             }
-            
-            TabButton(title: "Favorites ♥", isSelected: selectedTab == 1) {
-                selectedTab = 1
-            }
-            
-            TabButton(title: "Hard Words", isSelected: selectedTab == 2) {
-                selectedTab = 2
-            }
+            .padding(.horizontal)
+            .padding(.vertical, 12)
         }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
         .background(Color(UIColor.systemBackground))
     }
 }
 
-struct TabButton: View {
-    let title: String
+struct SectionTab: View {
+    let section: LibraryView.LibrarySection
     let isSelected: Bool
     let action: () -> Void
     
     var body: some View {
         Button(action: action) {
-            Text(title)
-                .font(.subheadline)
-                .fontWeight(isSelected ? .semibold : .regular)
-                .foregroundColor(isSelected ? .white : .primary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(
-                    isSelected ? Color.blue : Color.gray.opacity(0.1),
-                    in: RoundedRectangle(cornerRadius: 10)
-                )
+            VStack(spacing: 8) {
+                Image(systemName: section.icon)
+                    .font(.title2)
+                    .foregroundColor(isSelected ? .blue : .gray)
+                
+                Text(section.rawValue)
+                    .font(.caption)
+                    .fontWeight(isSelected ? .semibold : .regular)
+                    .foregroundColor(isSelected ? .blue : .gray)
+                
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.blue)
+                        .frame(height: 3)
+                        .transition(.scale)
+                } else {
+                    Color.clear
+                        .frame(height: 3)
+                }
+            }
         }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 
 // MARK: - Search and Filter Bar
-struct SearchFilterBar: View {
+struct SearchAndFilterBar: View {
     @Binding var searchText: String
-    @Binding var selectedHSKFilter: Int?
-    @Binding var selectedWordType: LibraryView.WordType?
-    @Binding var sortOption: LibraryView.SortOption
     @Binding var viewMode: LibraryView.ViewMode
-    
-    @State private var showingFilters = false
+    @Binding var showingFilterSheet: Bool
     
     var body: some View {
-        VStack(spacing: 10) {
-            // Search bar
+        HStack(spacing: 12) {
+            // Search field
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
                 
-                TextField("搜索汉字、拼音或意思", text: $searchText)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                TextField("Tìm kiếm từ vựng...", text: $searchText)
+                    .textFieldStyle(PlainTextFieldStyle())
                 
                 if !searchText.isEmpty {
                     Button {
@@ -310,117 +301,551 @@ struct SearchFilterBar: View {
                             .foregroundColor(.secondary)
                     }
                 }
-                
-                Button {
-                    showingFilters.toggle()
-                } label: {
-                    Image(systemName: "line.3.horizontal.decrease.circle")
-                        .foregroundColor(hasActiveFilters ? .blue : .secondary)
+            }
+            .padding(10)
+            .background(Color(UIColor.secondarySystemBackground))
+            .cornerRadius(10)
+            
+            // View mode toggle
+            Button {
+                withAnimation {
+                    viewMode = viewMode == .grid ? .list : .grid
+                }
+            } label: {
+                Image(systemName: viewMode.icon)
+                    .font(.title3)
+                    .foregroundColor(.blue)
+                    .frame(width: 40, height: 40)
+                    .background(Color(UIColor.secondarySystemBackground))
+                    .cornerRadius(10)
+            }
+            
+            // Filter button
+            Button {
+                showingFilterSheet = true
+            } label: {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                    .font(.title3)
+                    .foregroundColor(.blue)
+                    .frame(width: 40, height: 40)
+                    .background(Color(UIColor.secondarySystemBackground))
+                    .cornerRadius(10)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+}
+
+// MARK: - My Words Content
+struct MyWordsContent: View {
+    let words: [SavedWord]
+    let viewMode: LibraryView.ViewMode
+    @Binding var selectedWords: Set<SavedWord>
+    @Binding var isMultiSelectMode: Bool
+    
+    var body: some View {
+        if words.isEmpty {
+            EmptyStateView(
+                icon: "books.vertical",
+                title: "Chưa có từ vựng",
+                message: "Bắt đầu lưu các từ bạn học để xây dựng thư viện cá nhân"
+            )
+        } else {
+            ScrollView {
+                if viewMode == .grid {
+                    WordGridView(
+                        words: words,
+                        selectedWords: $selectedWords,
+                        isMultiSelectMode: $isMultiSelectMode
+                    )
+                } else {
+                    WordListView(
+                        words: words,
+                        selectedWords: $selectedWords,
+                        isMultiSelectMode: $isMultiSelectMode
+                    )
                 }
             }
-            .padding(.horizontal)
-            .padding(.vertical, 8)
-            
-            // Filter chips
-            if showingFilters {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        // HSK Level filters
-                        ForEach(3...6, id: \.self) { level in
-                            FilterChip(
-                                title: "HSK\(level)",
-                                isSelected: selectedHSKFilter == level
-                            ) {
-                                selectedHSKFilter = selectedHSKFilter == level ? nil : level
+        }
+    }
+}
+
+// MARK: - HSK Levels Content
+struct HSKLevelsContent: View {
+    let words: [SavedWord]
+    @Binding var selectedLevels: Set<Int>
+    let viewMode: LibraryView.ViewMode
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // HSK Level Selector
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(1...6, id: \.self) { level in
+                        HSKLevelChip(
+                            level: level,
+                            isSelected: selectedLevels.contains(level),
+                            wordCount: getWordCount(for: level)
+                        ) {
+                            if selectedLevels.contains(level) {
+                                selectedLevels.remove(level)
+                            } else {
+                                selectedLevels.insert(level)
                             }
-                        }
-                        
-                        Divider()
-                            .frame(height: 20)
-                        
-                        // Sort options
-                        Menu {
-                            ForEach(LibraryView.SortOption.allCases, id: \.self) { option in
-                                Button {
-                                    sortOption = option
-                                } label: {
-                                    Label(
-                                        option.rawValue,
-                                        systemImage: sortOption == option ? "checkmark" : ""
-                                    )
-                                }
-                            }
-                        } label: {
-                            FilterChip(title: "排序: \(sortOption.rawValue)", isSelected: false) { }
-                        }
-                        
-                        // View mode toggle
-                        Button {
-                            viewMode = viewMode == .list ? .grid : .list
-                        } label: {
-                            Image(systemName: viewMode == .list ? "square.grid.2x2" : "list.bullet")
-                                .foregroundColor(.blue)
                         }
                     }
-                    .padding(.horizontal)
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 12)
+            }
+            .background(Color(UIColor.systemBackground))
+            
+            Divider()
+            
+            // Words display
+            if words.isEmpty {
+                EmptyStateView(
+                    icon: "graduationcap",
+                    title: "Chọn cấp độ HSK",
+                    message: "Chọn một hoặc nhiều cấp độ để xem từ vựng"
+                )
+            } else {
+                ScrollView {
+                    if viewMode == .grid {
+                        WordGridView(
+                            words: words,
+                            selectedWords: .constant(Set()),
+                            isMultiSelectMode: .constant(false)
+                        )
+                    } else {
+                        WordListView(
+                            words: words,
+                            selectedWords: .constant(Set()),
+                            isMultiSelectMode: .constant(false)
+                        )
+                    }
                 }
             }
         }
-        .background(Color(UIColor.systemBackground))
     }
     
-    private var hasActiveFilters: Bool {
-        selectedHSKFilter != nil || selectedWordType != nil || sortOption != .recentlyAdded
+    private func getWordCount(for level: Int) -> Int {
+        WordDataManager.shared.savedWords.filter { $0.hskLevel == level }.count
     }
 }
 
-struct FilterChip: View {
-    let title: String
+struct HSKLevelChip: View {
+    let level: Int
     let isSelected: Bool
+    let wordCount: Int
     let action: () -> Void
     
     var body: some View {
         Button(action: action) {
-            Text(title)
-                .font(.caption)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(isSelected ? Color.blue : Color.gray.opacity(0.1))
-                .foregroundColor(isSelected ? .white : .primary)
-                .cornerRadius(15)
+            VStack(spacing: 4) {
+                Text("HSK \(level)")
+                    .font(.headline)
+                    .foregroundColor(isSelected ? .white : .primary)
+                
+                Text("\(wordCount) từ")
+                    .font(.caption)
+                    .foregroundColor(isSelected ? .white.opacity(0.8) : .secondary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isSelected ? Color.blue : Color(UIColor.secondarySystemBackground))
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+// MARK: - Folders Content
+struct FoldersContent: View {
+    @Binding var selectedFolder: PersonalFolder?
+    let words: [SavedWord]
+    let viewMode: LibraryView.ViewMode
+    @Binding var showingCreateFolder: Bool
+    
+    @FetchRequest(
+        sortDescriptors: [NSSortDescriptor(keyPath: \PersonalFolder.createdDate, ascending: false)],
+        animation: .default)
+    private var folders: FetchedResults<PersonalFolder>
+    
+    var body: some View {
+        if selectedFolder == nil {
+            // Show folders list
+            ScrollView {
+                LazyVGrid(columns: [
+                    GridItem(.flexible()),
+                    GridItem(.flexible())
+                ], spacing: 15) {
+                    // Create new folder card
+                    Button {
+                        showingCreateFolder = true
+                    } label: {
+                        VStack(spacing: 12) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.largeTitle)
+                                .foregroundColor(.blue)
+                            
+                            Text("Tạo thư mục")
+                                .font(.subheadline)
+                                .foregroundColor(.blue)
+                        }
+                        .frame(height: 120)
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            RoundedRectangle(cornerRadius: 15)
+                                .fill(Color.blue.opacity(0.1))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 15)
+                                        .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [8]))
+                                        .foregroundColor(.blue)
+                                )
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    
+                    // Existing folders
+                    ForEach(folders, id: \.self) { folder in
+                        FolderCard(folder: folder) {
+                            selectedFolder = folder
+                        }
+                    }
+                }
+                .padding()
+            }
+        } else {
+            // Show folder contents
+            VStack(spacing: 0) {
+                // Folder header
+                HStack {
+                    Button {
+                        selectedFolder = nil
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "chevron.left")
+                            Text("Thư mục")
+                        }
+                        .foregroundColor(.blue)
+                    }
+                    
+                    Spacer()
+                    
+                    Text(selectedFolder?.name ?? "")
+                        .font(.headline)
+                    
+                    Spacer()
+                    
+                    Menu {
+                        Button {
+                            // Edit folder
+                        } label: {
+                            Label("Sửa", systemImage: "pencil")
+                        }
+                        
+                        Button(role: .destructive) {
+                            // Delete folder
+                        } label: {
+                            Label("Xóa", systemImage: "trash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .foregroundColor(.blue)
+                    }
+                }
+                .padding()
+                .background(Color(UIColor.systemBackground))
+                
+                Divider()
+                
+                // Folder words
+                if words.isEmpty {
+                    EmptyStateView(
+                        icon: "folder",
+                        title: "Thư mục trống",
+                        message: "Thêm từ vựng vào thư mục này để tổ chức học tập"
+                    )
+                } else {
+                    ScrollView {
+                        if viewMode == .grid {
+                            WordGridView(
+                                words: words,
+                                selectedWords: .constant(Set()),
+                                isMultiSelectMode: .constant(false)
+                            )
+                        } else {
+                            WordListView(
+                                words: words,
+                                selectedWords: .constant(Set()),
+                                isMultiSelectMode: .constant(false)
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
-// MARK: - Review Badge
-struct ReviewTodayBadge: View {
-    let count: Int
+struct FolderCard: View {
+    let folder: PersonalFolder
     let action: () -> Void
+    
+    var wordCount: Int {
+        (folder.words as? Set<SavedWord>)?.count ?? 0
+    }
+
     
     var body: some View {
         Button(action: action) {
-            HStack {
-                Image(systemName: "clock.arrow.circlepath")
-                    .foregroundColor(.orange)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Image(systemName: "folder.fill")
+                        .font(.title)
+                        .foregroundColor(Color(hex: folder.colorHex ?? "007AFF"))
+                    
+                    Spacer()
+                    
+                    if wordCount > 0 {
+                        Text("\(wordCount)")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.gray)
+                            .cornerRadius(8)
+                    }
+                }
                 
-                Text("Bạn có \(count) từ cần ôn hôm nay")
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(folder.name ?? "Untitled")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                    
+                    if let description = folder.folderDescription {
+                        Text(description)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+            }
+            .padding()
+            .frame(height: 120)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 15)
+                    .fill(Color(UIColor.secondarySystemBackground))
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+// MARK: - Topics Content
+struct TopicsContent: View {
+    let words: [SavedWord]
+    let viewMode: LibraryView.ViewMode
+    
+    let topics = [
+        Topic(name: "Gia đình", icon: "person.3.fill", color: .blue, tags: ["family", "relatives"]),
+        Topic(name: "Công việc", icon: "briefcase.fill", color: .purple, tags: ["work", "career"]),
+        Topic(name: "Du lịch", icon: "airplane", color: .orange, tags: ["travel", "vacation"]),
+        Topic(name: "Ẩm thực", icon: "fork.knife", color: .red, tags: ["food", "cooking"]),
+        Topic(name: "Giáo dục", icon: "graduationcap.fill", color: .green, tags: ["education", "school"]),
+        Topic(name: "Sức khỏe", icon: "heart.fill", color: .pink, tags: ["health", "medical"]),
+        Topic(name: "Công nghệ", icon: "laptopcomputer", color: .indigo, tags: ["technology", "computer"]),
+        Topic(name: "Thể thao", icon: "sportscourt.fill", color: .mint, tags: ["sports", "exercise"])
+    ]
+    
+    struct Topic {
+        let name: String
+        let icon: String
+        let color: Color
+        let tags: [String]
+    }
+    
+    var body: some View {
+        ScrollView {
+            LazyVGrid(columns: [
+                GridItem(.flexible()),
+                GridItem(.flexible())
+            ], spacing: 15) {
+                ForEach(topics, id: \.name) { topic in
+                    TopicCard(topic: topic, wordCount: getWordCount(for: topic))
+                }
+            }
+            .padding()
+        }
+    }
+    
+    private func getWordCount(for topic: Topic) -> Int {
+        // Filter words by topic tags
+        return words.filter { word in
+            // Check if word has any of the topic tags
+            // This would require adding a tags field to SavedWord
+            return false // Placeholder
+        }.count
+    }
+}
+
+struct TopicCard: View {
+    let topic: TopicsContent.Topic
+    let wordCount: Int
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: topic.icon)
+                .font(.largeTitle)
+                .foregroundColor(topic.color)
+            
+            Text(topic.name)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(.primary)
+            
+            Text("\(wordCount) từ")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .frame(height: 120)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 15)
+                .fill(topic.color.opacity(0.1))
+        )
+    }
+}
+
+// MARK: - Word Grid View
+struct WordGridView: View {
+    let words: [SavedWord]
+    @Binding var selectedWords: Set<SavedWord>
+    @Binding var isMultiSelectMode: Bool
+    
+    let columns = [
+        GridItem(.flexible(), spacing: 15),
+        GridItem(.flexible(), spacing: 15)
+    ]
+    
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: 15) {
+            ForEach(words, id: \.self) { word in
+                WordGridCard(
+                    word: word,
+                    isSelected: selectedWords.contains(word),
+                    isMultiSelectMode: isMultiSelectMode
+                ) {
+                    if isMultiSelectMode {
+                        if selectedWords.contains(word) {
+                            selectedWords.remove(word)
+                        } else {
+                            selectedWords.insert(word)
+                        }
+                    }
+                }
+            }
+        }
+        .padding()
+    }
+}
+
+struct WordGridCard: View {
+    let word: SavedWord
+    let isSelected: Bool
+    let isMultiSelectMode: Bool
+    let onSelect: () -> Void
+    @State private var showingDetail = false
+    
+    var body: some View {
+        Button(action: {
+            if isMultiSelectMode {
+                onSelect()
+            } else {
+                showingDetail = true
+            }
+        }) {
+            VStack(spacing: 12) {
+                // Selection indicator
+                if isMultiSelectMode {
+                    HStack {
+                        Spacer()
+                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                            .foregroundColor(isSelected ? .blue : .gray)
+                            .font(.title3)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 12)
+                }
+                
+                // Character
+                Text(word.hanzi ?? "")
+                    .font(.system(size: 48))
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+                    .minimumScaleFactor(0.7)
+                
+                // Pinyin
+                Text(word.pinyin ?? "")
                     .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                // Meaning
+                Text(word.meaning ?? "")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 8)
                 
                 Spacer()
                 
-                Text("Bắt đầu")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
-                    .background(Color.orange)
-                    .cornerRadius(8)
+                // Bottom indicators
+                HStack {
+                    if word.isFavorite {
+                        Image(systemName: "heart.fill")
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
+                    
+                    Spacer()
+                    
+                    Text("HSK\(word.hskLevel)")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.blue.opacity(0.1))
+                        .foregroundColor(.blue)
+                        .cornerRadius(4)
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
             }
-            .padding()
-            .background(Color.orange.opacity(0.1))
-            .cornerRadius(12)
-            .padding(.horizontal)
+            .frame(height: 180)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 15)
+                    .fill(Color(UIColor.secondarySystemBackground))
+                    .overlay(
+                        isSelected ?
+                        RoundedRectangle(cornerRadius: 15)
+                            .stroke(Color.blue, lineWidth: 2)
+                        : nil
+                    )
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .sheet(isPresented: $showingDetail) {
+            WordDetailSheet(word: word)
         }
     }
 }
@@ -432,103 +857,84 @@ struct WordListView: View {
     @Binding var isMultiSelectMode: Bool
     
     var body: some View {
-        List {
+        LazyVStack(spacing: 10) {
             ForEach(words, id: \.self) { word in
-                WordRowEnhanced(
+                WordListRow(
                     word: word,
                     isSelected: selectedWords.contains(word),
-                    isMultiSelectMode: isMultiSelectMode,
-                    onSelect: {
-                        if isMultiSelectMode {
-                            if selectedWords.contains(word) {
-                                selectedWords.remove(word)
-                            } else {
-                                selectedWords.insert(word)
-                            }
+                    isMultiSelectMode: isMultiSelectMode
+                ) {
+                    if isMultiSelectMode {
+                        if selectedWords.contains(word) {
+                            selectedWords.remove(word)
+                        } else {
+                            selectedWords.insert(word)
                         }
                     }
-                )
-            }
-            .onDelete(perform: deleteWords)
-        }
-        .listStyle(InsetGroupedListStyle())
-    }
-    
-    private func deleteWords(at offsets: IndexSet) {
-        withAnimation {
-            offsets.map { words[$0] }.forEach { word in
-                WordDataManager.shared.deleteWord(word)
-            }
-        }
-    }
-}
-
-// MARK: - Word Grid View
-struct WordGridView: View {
-    let words: [SavedWord]
-    @Binding var selectedWords: Set<SavedWord>
-    @Binding var isMultiSelectMode: Bool
-    
-    let columns = [
-        GridItem(.flexible()),
-        GridItem(.flexible())
-    ]
-    
-    var body: some View {
-        ScrollView {
-            LazyVGrid(columns: columns, spacing: 15) {
-                ForEach(words, id: \.self) { word in
-                    WordCardView(
-                        word: word,
-                        isSelected: selectedWords.contains(word),
-                        isMultiSelectMode: isMultiSelectMode,
-                        onSelect: {
-                            if isMultiSelectMode {
-                                if selectedWords.contains(word) {
-                                    selectedWords.remove(word)
-                                } else {
-                                    selectedWords.insert(word)
-                                }
-                            }
-                        }
-                    )
                 }
             }
-            .padding()
         }
+        .padding()
     }
 }
 
-// MARK: - Enhanced Word Row
-struct WordRowEnhanced: View {
+//
+//  LibraryView.swift
+//  ChineseWordLockScreen
+//
+//  Enhanced library with comprehensive filtering and organization
+//
+
+import SwiftUI
+import CoreData
+
+// ... keep everything you already wrote above ...
+
+// CONTINUED from WordListRow (closing out properly)
+struct WordListRow: View {
     let word: SavedWord
     let isSelected: Bool
     let isMultiSelectMode: Bool
     let onSelect: () -> Void
-    
-    @StateObject private var wordDataManager = WordDataManager.shared
     @State private var showingDetail = false
-    @State private var showingNote = false
-    @State private var personalNote = ""
+    @StateObject private var wordDataManager = WordDataManager.shared
     
     var body: some View {
-        HStack(spacing: 12) {
+        Button(action: {
             if isMultiSelectMode {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(isSelected ? .blue : .gray)
-                    .onTapGesture(perform: onSelect)
+                onSelect()
+            } else {
+                showingDetail = true
             }
-            
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text(word.hanzi ?? "")
-                        .font(.title2)
-                        .fontWeight(.medium)
+        }) {
+            HStack(spacing: 15) {
+                if isMultiSelectMode {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .foregroundColor(isSelected ? .blue : .gray)
+                        .font(.title3)
+                }
+                
+                Text(word.hanzi ?? "")
+                    .font(.title)
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+                    .frame(width: 50)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(word.pinyin ?? "")
+                        .font(.subheadline)
+                        .foregroundColor(.primary)
                     
-                    Spacer()
-                    
-                    HStack(spacing: 8) {
-                        // Status icons
+                    Text(word.meaning ?? "")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+                
+                Spacer()
+                
+                VStack(alignment: .trailing, spacing: 6) {
+                    HStack(spacing: 6) {
                         if word.isFavorite {
                             Image(systemName: "heart.fill")
                                 .font(.caption)
@@ -541,329 +947,31 @@ struct WordRowEnhanced: View {
                                 .foregroundColor(.orange)
                         }
                         
-                        if word.incorrectCount > word.correctCount {
-                            Text("🟨")
-                                .font(.caption)
-                        }
-                    }
-                    
-                    Button {
-                        wordDataManager.toggleFavorite(for: word)
-                    } label: {
-                        Image(systemName: word.isFavorite ? "star.fill" : "star")
-                            .foregroundColor(word.isFavorite ? .yellow : .gray)
-                    }
-                    .buttonStyle(BorderlessButtonStyle())
-                }
-                
-                Text(word.pinyin ?? "")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                Text(word.meaning ?? "")
-                    .font(.body)
-                    .lineLimit(2)
-                
-                if let example = word.example {
-                    Text(example)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-                
-                HStack {
-                    Label("HSK \(word.hskLevel)", systemImage: "graduationcap.fill")
-                        .font(.caption2)
-                        .foregroundColor(.blue)
-                    
-                    Spacer()
-                    
-                    if word.reviewCount > 0 {
-                        Label("\(word.reviewCount)", systemImage: "eye.fill")
+                        Text("HSK\(word.hskLevel)")
                             .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    if let nextReview = word.nextReviewDate {
-                        Text(nextReviewText(for: nextReview))
-                            .font(.caption2)
-                            .foregroundColor(.orange)
+                            .fontWeight(.semibold)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.blue.opacity(0.1))
+                            .cornerRadius(4)
                     }
                 }
             }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(UIColor.secondarySystemBackground))
+            )
         }
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if !isMultiSelectMode {
-                showingDetail = true
-            } else {
-                onSelect()
-            }
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button(role: .destructive) {
-                wordDataManager.deleteWord(word)
-            } label: {
-                Label("删除", systemImage: "trash")
-            }
-            
-            Button {
-                showingNote = true
-            } label: {
-                Label("笔记", systemImage: "note.text")
-            }
-            .tint(.blue)
-        }
-        .swipeActions(edge: .leading) {
-            Button {
-                wordDataManager.markWordAsRemembered(word)
-            } label: {
-                Label("记得", systemImage: "checkmark")
-            }
-            .tint(.green)
-            
-            Button {
-                wordDataManager.markWordAsForgotten(word)
-            } label: {
-                Label("忘记", systemImage: "xmark")
-            }
-            .tint(.orange)
-        }
+        .buttonStyle(PlainButtonStyle())
         .sheet(isPresented: $showingDetail) {
-            WordDetailView(word: word)
-        }
-        .sheet(isPresented: $showingNote) {
-            NoteEditView(word: word, note: $personalNote)
-        }
-    }
-    
-    private func nextReviewText(for date: Date) -> String {
-        let days = Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0
-        if days == 0 { return "今天复习" }
-        if days == 1 { return "明天复习" }
-        return "\(days)天后复习"
-    }
-}
-
-// MARK: - Word Card View (Grid)
-struct WordCardView: View {
-    let word: SavedWord
-    let isSelected: Bool
-    let isMultiSelectMode: Bool
-    let onSelect: () -> Void
-    
-    var body: some View {
-        VStack(spacing: 8) {
-            if isMultiSelectMode {
-                HStack {
-                    Spacer()
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .foregroundColor(isSelected ? .blue : .gray)
-                }
-                .padding(.horizontal, 8)
-                .padding(.top, 8)
-            }
-            
-            Text(word.hanzi ?? "")
-                .font(.largeTitle)
-                .fontWeight(.medium)
-            
-            Text(word.pinyin ?? "")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
-            Text(word.meaning ?? "")
-                .font(.caption2)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-            
-            Spacer()
-            
-            HStack {
-                if word.isFavorite {
-                    Image(systemName: "heart.fill")
-                        .font(.caption)
-                        .foregroundColor(.red)
-                }
-                
-                Spacer()
-                
-                Text("HSK\(word.hskLevel)")
-                    .font(.caption2)
-                    .foregroundColor(.blue)
-            }
-            .padding(.horizontal, 8)
-            .padding(.bottom, 8)
-        }
-        .frame(height: 150)
-        .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 15)
-                .fill(Color.white)
-                .shadow(color: .black.opacity(0.05), radius: 5)
-        )
-        .overlay(
-            isSelected ?
-            RoundedRectangle(cornerRadius: 15)
-                .stroke(Color.blue, lineWidth: 2)
-            : nil
-        )
-        .onTapGesture(perform: onSelect)
-    }
-}
-
-// MARK: - Empty State
-struct EmptyLibraryView: View {
-    let tab: Int
-    
-    var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: tab == 1 ? "heart" : tab == 2 ? "exclamationmark.triangle" : "books.vertical")
-                .font(.system(size: 60))
-                .foregroundColor(.gray)
-            
-            Text(emptyTitle)
-                .font(.title3)
-                .fontWeight(.semibold)
-            
-            Text(emptyMessage)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-            
-            if tab == 0 {
-                NavigationLink(destination: HomeView()) {
-                    Text("浏览词汇")
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 10)
-                        .background(Color.blue)
-                        .cornerRadius(10)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-    
-    private var emptyTitle: String {
-        switch tab {
-        case 1: return "没有收藏的词汇"
-        case 2: return "没有困难词汇"
-        default: return "词库为空"
-        }
-    }
-    
-    private var emptyMessage: String {
-        switch tab {
-        case 1: return "点击爱心图标来收藏你喜欢的词汇"
-        case 2: return "练习中标记为困难的词汇会显示在这里"
-        default: return "开始学习并保存词汇来建立你的个人词库"
+            WordDetailSheet(word: word)
         }
     }
 }
 
-// MARK: - Multi-select Bottom Bar
-struct MultiSelectBottomBar: View {
-    let selectedCount: Int
-    let onDelete: () -> Void
-    let onExport: () -> Void
-    let onAddToFolder: () -> Void
-    
-    var body: some View {
-        HStack(spacing: 30) {
-            Text("已选 \(selectedCount) 个")
-                .font(.subheadline)
-                .fontWeight(.medium)
-            
-            Spacer()
-            
-            Button(action: onAddToFolder) {
-                Image(systemName: "folder.badge.plus")
-            }
-            
-            Button(action: onExport) {
-                Image(systemName: "square.and.arrow.up")
-            }
-            
-            Button(action: onDelete) {
-                Image(systemName: "trash")
-                    .foregroundColor(.red)
-            }
-        }
-        .padding()
-        .background(
-            Color(UIColor.systemBackground)
-                .shadow(color: .black.opacity(0.1), radius: 5, y: -2)
-        )
-    }
-}
-
-// MARK: - Supporting Views
-struct FlashcardModeView: View {
-    let words: [SavedWord]
-    @Environment(\.dismiss) var dismiss
-    
-    var body: some View {
-        NavigationView {
-            Text("Flashcard Mode with \(words.count) words")
-                .navigationTitle("Flashcards")
-                .navigationBarItems(
-                    trailing: Button("Done") { dismiss() }
-                )
-        }
-    }
-}
-
-struct ExportView: View {
-    let words: [SavedWord]
-    @Environment(\.dismiss) var dismiss
-    
-    var body: some View {
-        NavigationView {
-            VStack(spacing: 20) {
-                Text("导出 \(words.count) 个词汇")
-                    .font(.title2)
-                
-                Button("导出为CSV") {
-                    // Export logic
-                    dismiss()
-                }
-                .buttonStyle(.borderedProminent)
-            }
-            .navigationTitle("导出")
-            .navigationBarItems(
-                trailing: Button("取消") { dismiss() }
-            )
-        }
-    }
-}
-
-struct CreateFolderView: View {
-    @Environment(\.dismiss) var dismiss
-    @State private var folderName = ""
-    
-    var body: some View {
-        NavigationView {
-            Form {
-                TextField("文件夹名称", text: $folderName)
-            }
-            .navigationTitle("新建文件夹")
-            .navigationBarItems(
-                leading: Button("取消") { dismiss() },
-                trailing: Button("创建") {
-                    // Create folder logic
-                    dismiss()
-                }
-                .disabled(folderName.isEmpty)
-            )
-        }
-    }
-}
-
-struct WordDetailView: View {
+// MARK: - Word Detail Sheet
+struct WordDetailSheet: View {
     let word: SavedWord
     @Environment(\.dismiss) var dismiss
     
@@ -890,35 +998,119 @@ struct WordDetailView: View {
                 }
                 .padding()
             }
-            .navigationTitle("词汇详情")
-            .navigationBarItems(
-                trailing: Button("Done") { dismiss() }
-            )
+            .navigationTitle("Chi tiết từ")
+            .navigationBarItems(trailing: Button("Đóng") { dismiss() })
         }
     }
 }
 
-struct NoteEditView: View {
-    let word: SavedWord
-    @Binding var note: String
+// MARK: - Empty State View
+struct EmptyStateView: View {
+    let icon: String
+    let title: String
+    let message: String
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: icon)
+                .font(.system(size: 60))
+                .foregroundColor(.gray)
+            
+            Text(title)
+                .font(.headline)
+            
+            Text(message)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - Filter Sheet
+struct FilterSheet: View {
+    @Binding var sortOption: LibraryView.SortOption
+    @Binding var showOnlyFavorites: Bool
+    @Binding var showOnlyDifficult: Bool
     @Environment(\.dismiss) var dismiss
     
     var body: some View {
         NavigationView {
             Form {
-                Section("个人笔记") {
-                    TextEditor(text: $note)
-                        .frame(minHeight: 100)
+                Section(header: Text("Sắp xếp")) {
+                    Picker("Tiêu chí", selection: $sortOption) {
+                        ForEach(LibraryView.SortOption.allCases, id: \.self) { option in
+                            Text(option.rawValue).tag(option)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                }
+                
+                Section(header: Text("Bộ lọc")) {
+                    Toggle("Chỉ từ yêu thích", isOn: $showOnlyFavorites)
+                    Toggle("Chỉ từ khó", isOn: $showOnlyDifficult)
                 }
             }
-            .navigationTitle("\(word.hanzi ?? "") - 笔记")
+            .navigationTitle("Bộ lọc")
+            .navigationBarItems(trailing: Button("Xong") { dismiss() })
+        }
+    }
+}
+
+// MARK: - Create Folder View
+struct CreateFolderView: View {
+    @Environment(\.dismiss) var dismiss
+    @State private var folderName = ""
+    @State private var folderDescription = ""
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section("Tên thư mục") {
+                    TextField("Nhập tên", text: $folderName)
+                }
+                
+                Section("Mô tả") {
+                    TextField("Nhập mô tả (tùy chọn)", text: $folderDescription)
+                }
+            }
+            .navigationTitle("Tạo thư mục")
             .navigationBarItems(
-                leading: Button("取消") { dismiss() },
-                trailing: Button("保存") {
-                    // Save note logic
+                leading: Button("Hủy") { dismiss() },
+                trailing: Button("Tạo") {
+                    // TODO: Save folder to CoreData
                     dismiss()
                 }
+                .disabled(folderName.isEmpty)
             )
         }
     }
 }
+
+// MARK: - Export View
+struct ExportView: View {
+    let words: [SavedWord]
+    @Environment(\.dismiss) var dismiss
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                Text("Xuất \(words.count) từ vựng")
+                    .font(.title2)
+                
+                Button("Xuất CSV") {
+                    // TODO: Implement CSV export
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .padding()
+            .navigationTitle("Xuất dữ liệu")
+            .navigationBarItems(trailing: Button("Đóng") { dismiss() })
+        }
+    }
+}
+
+
