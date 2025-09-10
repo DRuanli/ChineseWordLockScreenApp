@@ -54,6 +54,7 @@
 		A44C261F2E706227001F0051 /* WordWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WordWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A44C26212E706227001F0051 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		A44C26232E706227001F0051 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		A44C26512E7168F7001F0051 /* WordWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WordWidgetExtension.entitlements; sourceTree = "<group>"; };
 		A49E60732E705B6A006942DD /* ChineseWordLockScreen.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ChineseWordLockScreen.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A49E608A2E705B6D006942DD /* ChineseWordLockScreenTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ChineseWordLockScreenTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A49E60942E705B6D006942DD /* ChineseWordLockScreenUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ChineseWordLockScreenUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -160,6 +161,7 @@
 		A49E606A2E705B6A006942DD = {
 			isa = PBXGroup;
 			children = (
+				A44C26512E7168F7001F0051 /* WordWidgetExtension.entitlements */,
 				A49E60752E705B6A006942DD /* ChineseWordLockScreen */,
 				A49E608D2E705B6D006942DD /* ChineseWordLockScreenTests */,
 				A49E60972E705B6D006942DD /* ChineseWordLockScreenUITests */,
@@ -409,6 +411,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = WordWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 68MARMYKT8;
@@ -436,6 +439,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = WordWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 68MARMYKT8;

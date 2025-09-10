@@ -2,9 +2,20 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>UIBackgroundModes</key>
+	<key>CFBundleURLTypes</key>
 	<array>
-		<string>remote-notification</string>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>SE.ChineseWordLockScreen</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>chineseword</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>SE.ChineseWordLockScreen.viewWord</string>
 	</array>
 </dict>
 </plist>
