@@ -2,7 +2,7 @@
 //  MainTabView.swift
 //  ChineseWordLockScreen
 //
-//  Created by Lê Nguyễn on 9/9/25.
+//  Updated with minimalist home and new study dashboard
 //
 
 import SwiftUI
@@ -18,14 +18,17 @@ struct MainTabView: View {
                 HomeView()
                     .tag(0)
                 
-                LibraryView()
+                StudyDashboardView()
                     .tag(1)
                 
-                StatsView()
+                LibraryView()
                     .tag(2)
                 
-                ProfileSettingsView()
+                StatsView()
                     .tag(3)
+                
+                ProfileSettingsView()
+                    .tag(4)
             }
             
             // Custom Tab Bar
@@ -44,31 +47,38 @@ struct CustomTabBar: View {
     var body: some View {
         HStack(spacing: 0) {
             TabBarButton(
-                icon: "house.fill",
-                title: "主页",
+                icon: "character.book.closed.fill",
+                title: "Học",
                 isSelected: selectedTab == 0,
                 action: { selectedTab = 0 }
             )
             
             TabBarButton(
-                icon: "books.vertical.fill",
-                title: "词库",
+                icon: "chart.line.uptrend.xyaxis",
+                title: "Tiến độ",
                 isSelected: selectedTab == 1,
                 action: { selectedTab = 1 }
             )
             
             TabBarButton(
-                icon: "chart.bar.fill",
-                title: "统计",
+                icon: "books.vertical.fill",
+                title: "Thư viện",
                 isSelected: selectedTab == 2,
                 action: { selectedTab = 2 }
             )
             
             TabBarButton(
-                icon: "person.circle.fill",
-                title: "我的",
+                icon: "chart.bar.fill",
+                title: "Thống kê",
                 isSelected: selectedTab == 3,
                 action: { selectedTab = 3 }
+            )
+            
+            TabBarButton(
+                icon: "person.circle.fill",
+                title: "Cài đặt",
+                isSelected: selectedTab == 4,
+                action: { selectedTab = 4 }
             )
         }
         .padding(.horizontal)
@@ -93,13 +103,13 @@ struct TabBarButton: View {
         Button(action: action) {
             VStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(.system(size: 22))
-                    .foregroundColor(isSelected ? .teal : .gray)
+                    .font(.system(size: 20))
+                    .foregroundColor(isSelected ? .blue : .gray)
                     .scaleEffect(isSelected ? 1.1 : 1.0)
                 
                 Text(title)
                     .font(.caption2)
-                    .foregroundColor(isSelected ? .teal : .gray)
+                    .foregroundColor(isSelected ? .blue : .gray)
             }
             .frame(maxWidth: .infinity)
         }
@@ -107,6 +117,7 @@ struct TabBarButton: View {
     }
 }
 
+// Keep the existing ProfileSettingsView but simplify it
 struct ProfileSettingsView: View {
     @StateObject private var authManager = AuthenticationManager.shared
     @StateObject private var notificationManager = NotificationManager.shared
@@ -114,22 +125,86 @@ struct ProfileSettingsView: View {
     @State private var showingLogoutAlert = false
     @State private var selectedHSKLevel = 5
     @State private var dailyGoal = 10
+    @State private var showingPaywall = false
     
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
-                    // Profile Header
-                    ProfileHeaderCard()
+                    // Profile Header - Simplified
+                    VStack(spacing: 15) {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.teal, Color.blue],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 80, height: 80)
+                            .overlay(
+                                Text(authManager.currentUser?.username?.first?.uppercased() ?? "U")
+                                    .font(.largeTitle)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.white)
+                            )
+                        
+                        VStack(spacing: 4) {
+                            Text(authManager.currentUser?.username ?? "用户")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                            
+                            Text(authManager.currentUser?.email ?? "")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(Color.white)
+                            .shadow(color: Color.black.opacity(0.05), radius: 10)
+                    )
+                    .padding(.horizontal)
                     
                     // Settings Sections
                     VStack(spacing: 15) {
+                        // Premium upgrade card
+                        Button(action: { showingPaywall = true }) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Nâng cấp Premium")
+                                        .font(.headline)
+                                        .foregroundColor(.white)
+                                    
+                                    Text("Mở khóa toàn bộ tính năng")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.8))
+                                }
+                                
+                                Spacer()
+                                
+                                Image(systemName: "crown.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.yellow)
+                            }
+                            .padding()
+                            .background(
+                                LinearGradient(
+                                    colors: [Color.blue, Color.purple],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .cornerRadius(15)
+                        }
+                        .padding(.horizontal)
+                        
                         // Learning Settings
-                        SettingsCard(title: "学习设置", icon: "book.circle.fill", color: .blue) {
+                        SettingsCard(title: "Cài đặt học tập", icon: "book.circle.fill", color: .blue) {
                             VStack(spacing: 15) {
-                                // HSK Level
                                 HStack {
-                                    Text("HSK 级别")
+                                    Text("HSK Level")
                                         .font(.subheadline)
                                     Spacer()
                                     Picker("", selection: $selectedHSKLevel) {
@@ -143,26 +218,25 @@ struct ProfileSettingsView: View {
                                 
                                 Divider()
                                 
-                                // Daily Goal
                                 HStack {
-                                    Text("每日目标")
+                                    Text("Mục tiêu hàng ngày")
                                         .font(.subheadline)
                                     Spacer()
-                                    Stepper("\(dailyGoal) 词", value: $dailyGoal, in: 5...50, step: 5)
+                                    Stepper("\(dailyGoal) từ", value: $dailyGoal, in: 5...50, step: 5)
                                         .frame(width: 120)
                                 }
                             }
                         }
                         
                         // Notification Settings
-                        SettingsCard(title: "通知设置", icon: "bell.circle.fill", color: .orange) {
+                        SettingsCard(title: "Thông báo", icon: "bell.circle.fill", color: .orange) {
                             VStack(spacing: 15) {
-                                Toggle("启用通知", isOn: $notificationManager.isNotificationEnabled)
+                                Toggle("Bật thông báo", isOn: $notificationManager.isNotificationEnabled)
                                     .font(.subheadline)
                                 
                                 if notificationManager.isNotificationEnabled {
                                     Divider()
-                                    Stepper("每日提醒: \(notificationManager.notificationFrequency)次",
+                                    Stepper("Tần suất: \(notificationManager.notificationFrequency) lần/ngày",
                                             value: $notificationManager.notificationFrequency,
                                             in: 1...5)
                                         .font(.subheadline)
@@ -171,17 +245,17 @@ struct ProfileSettingsView: View {
                         }
                         
                         // Widget Instructions
-                        SettingsCard(title: "Widget 设置", icon: "square.stack.3d.up.fill", color: .purple) {
+                        SettingsCard(title: "Widget", icon: "square.stack.3d.up.fill", color: .purple) {
                             VStack(alignment: .leading, spacing: 10) {
-                                Text("添加Widget到锁屏:")
+                                Text("Thêm Widget vào màn hình khóa:")
                                     .font(.subheadline)
                                     .fontWeight(.medium)
                                 
                                 ForEach([
-                                    "1. 长按锁屏",
-                                    "2. 点击自定义",
-                                    "3. 添加小组件",
-                                    "4. 选择 Chinese Word"
+                                    "1. Nhấn giữ màn hình khóa",
+                                    "2. Chọn Tùy chỉnh",
+                                    "3. Thêm tiện ích",
+                                    "4. Chọn Chinese Word"
                                 ], id: \.self) { step in
                                     Text(step)
                                         .font(.caption)
@@ -190,27 +264,24 @@ struct ProfileSettingsView: View {
                             }
                         }
                         
-                        // Account Actions
-                        VStack(spacing: 10) {
-                            Button(action: { showingLogoutAlert = true }) {
-                                HStack {
-                                    Image(systemName: "rectangle.portrait.and.arrow.right")
-                                    Text("退出登录")
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.red.opacity(0.1))
-                                .foregroundColor(.red)
-                                .cornerRadius(12)
+                        // Logout
+                        Button(action: { showingLogoutAlert = true }) {
+                            HStack {
+                                Image(systemName: "rectangle.portrait.and.arrow.right")
+                                Text("Đăng xuất")
                             }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.red.opacity(0.1))
+                            .foregroundColor(.red)
+                            .cornerRadius(12)
                         }
-                        .padding(.top, 10)
+                        .padding(.horizontal)
                     }
-                    .padding(.horizontal)
                 }
                 .padding(.vertical)
             }
-            .navigationTitle("我的")
+            .navigationTitle("Cài đặt")
             .navigationBarTitleDisplayMode(.inline)
             .background(Color.gray.opacity(0.05))
         }
@@ -237,91 +308,17 @@ struct ProfileSettingsView: View {
             authManager.updateUserProfile(notificationFrequency: newValue)
             notificationManager.updateNotificationFrequency(newValue)
         }
-        .alert("退出登录", isPresented: $showingLogoutAlert) {
-            Button("取消", role: .cancel) { }
-            Button("退出", role: .destructive) {
+        .alert("Đăng xuất", isPresented: $showingLogoutAlert) {
+            Button("Hủy", role: .cancel) { }
+            Button("Đăng xuất", role: .destructive) {
                 authManager.logout()
             }
         } message: {
-            Text("确定要退出登录吗？")
+            Text("Bạn có chắc muốn đăng xuất?")
         }
-    }
-}
-
-struct ProfileHeaderCard: View {
-    @StateObject private var authManager = AuthenticationManager.shared
-    @StateObject private var wordDataManager = WordDataManager.shared
-    
-    var body: some View {
-        VStack(spacing: 15) {
-            // Avatar
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [Color.teal, Color.blue],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: 80, height: 80)
-                .overlay(
-                    Text(authManager.currentUser?.username?.first?.uppercased() ?? "U")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                        .foregroundColor(.white)
-                )
-            
-            // Username
-            Text(authManager.currentUser?.username ?? "用户")
-                .font(.title3)
-                .fontWeight(.semibold)
-            
-            // Email
-            Text(authManager.currentUser?.email ?? "")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
-            // Stats
-            HStack(spacing: 30) {
-                VStack {
-                    Text("\(wordDataManager.savedWords.count)")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.teal)
-                    Text("已学词汇")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
-                VStack {
-                    Text("\(wordDataManager.streak)")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.orange)
-                    Text("连续天数")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
-                VStack {
-                    Text("HSK\(authManager.currentUser?.preferredHSKLevel ?? 5)")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.purple)
-                    Text("当前级别")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView()
         }
-        .padding(25)
-        .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color.white)
-                .shadow(color: Color.black.opacity(0.05), radius: 10)
-        )
-        .padding(.horizontal)
     }
 }
 
@@ -353,6 +350,7 @@ struct SettingsCard<Content: View>: View {
                 .fill(Color.white)
                 .shadow(color: Color.black.opacity(0.05), radius: 5)
         )
+        .padding(.horizontal)
     }
 }
 
