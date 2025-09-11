@@ -2,7 +2,7 @@
 //  HomeView.swift
 //  ChineseWordLockScreen
 //
-//  Clean minimalist design inspired by language learning apps
+//  Tinder-style swipe interface with floating menus
 //
 
 import SwiftUI
@@ -13,115 +13,355 @@ struct HomeView: View {
     @StateObject private var wordDataManager = WordDataManager.shared
     @StateObject private var authManager = AuthenticationManager.shared
     
-    @State private var showingExample = false
-    @State private var showingInfo = false
-    @State private var showingShare = false
-    @State private var audioPlaying = false
+    // Card stack management
+    @State private var cardStack: [HSKWord] = []
+    @State private var currentIndex = 0
+    
+    // Menu states
+    @State private var showLeftMenu = false
+    @State private var showRightMenu = false
+    @State private var showCenterMenu = false
+    
+    // Navigation states
+    @State private var showingStats = false
+    @State private var showingLibrary = false
+    @State private var showingProfile = false
+    @State private var showingSettings = false
+    @State private var showingStudyMode = false
+    @State private var showingGameMode = false
+    @State private var showingPractice = false
+    @State private var showingTest = false
     
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                // Clean white background
-                Color.white
-                    .ignoresSafeArea()
+        ZStack {
+            // Background
+            LinearGradient(
+                colors: [
+                    Color(red: 0.98, green: 0.99, blue: 1.0),
+                    Color(red: 0.95, green: 0.97, blue: 1.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                // Top Bar
+                TopBar(
+                    current: wordDataManager.todayWordsCount,
+                    goal: Int(authManager.currentUser?.dailyGoal ?? 10),
+                    streak: wordDataManager.streak
+                )
+                .padding(.horizontal)
+                .padding(.top, 10)
                 
-                VStack(spacing: 0) {
-                    // Custom Status Bar
-                    CustomStatusBar()
-                        .padding(.top, 8)
-                    
-                    // Progress Section
-                    ProgressSection(
-                        current: wordDataManager.todayWordsCount,
-                        total: Int(authManager.currentUser?.dailyGoal ?? 10)
-                    )
-                    .padding(.horizontal, 20)
-                    .padding(.top, 20)
-                    
-                    // Main Content Area
-                    VStack(spacing: 32) {
-                        Spacer()
-                        
-                        // Chinese Character - Main Focus
-                        Text(viewModel.currentWord.hanzi)
-                            .font(.system(size: 64, weight: .bold, design: .default))
+                // Swipeable Card Stack
+                ZStack {
+                    ForEach(cardStack.indices.reversed(), id: \.self) { index in
+                        WordCard(
+                            word: cardStack[index],
+                            onRemove: { swipeDirection in
+                                removeCard(at: index, direction: swipeDirection)
+                            }
+                        )
+                        .opacity(index == currentIndex ? 1 : 0.5)
+                        .scaleEffect(index == currentIndex ? 1 : 0.95)
+                        .offset(y: CGFloat(index - currentIndex) * 10)
+                        .allowsHitTesting(index == currentIndex)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 40)
+                
+                Spacer()
+            }
+            
+            // Floating Menu Buttons
+            FloatingMenuButtons(
+                showLeftMenu: $showLeftMenu,
+                showRightMenu: $showRightMenu,
+                showCenterMenu: $showCenterMenu,
+                onStatsTap: { showingStats = true },
+                onLibraryTap: { showingLibrary = true },
+                onProfileTap: { showingProfile = true },
+                onSettingsTap: { showingSettings = true },
+                onStudyTap: { showingStudyMode = true },
+                onGameTap: { showingGameMode = true },
+                onPracticeTap: { showingPractice = true },
+                onTestTap: { showingTest = true }
+            )
+        }
+        .onAppear {
+            loadCardStack()
+        }
+        .fullScreenCover(isPresented: $showingStats) {
+            NavigationView { StatsView() }
+        }
+        .fullScreenCover(isPresented: $showingLibrary) {
+            NavigationView { LibraryView() }
+        }
+        .fullScreenCover(isPresented: $showingProfile) {
+            NavigationView { ProfileSettingsView() }
+        }
+        .fullScreenCover(isPresented: $showingSettings) {
+            NavigationView { ProfileSettingsView() }
+        }
+        .fullScreenCover(isPresented: $showingStudyMode) {
+            StudyDashboardView()
+        }
+        .fullScreenCover(isPresented: $showingGameMode) {
+            QuickStudyView()
+        }
+        .fullScreenCover(isPresented: $showingPractice) {
+            FlashcardSessionView()
+        }
+        .fullScreenCover(isPresented: $showingTest) {
+            QuickStudyView()
+        }
+    }
+    
+    private func loadCardStack() {
+        let words = HSKDatabaseSeeder.shared.getSampleWords()
+        cardStack = Array(words.shuffled().prefix(10))
+    }
+    
+    private func removeCard(at index: Int, direction: SwipeDirection) {
+        guard index == currentIndex else { return }
+        
+        withAnimation(.spring()) {
+            if direction == .right {
+                // Save word
+                wordDataManager.saveWord(cardStack[index])
+            }
+            
+            currentIndex += 1
+            
+            // Load more cards if running low
+            if currentIndex >= cardStack.count - 3 {
+                loadMoreCards()
+            }
+        }
+    }
+    
+    private func loadMoreCards() {
+        let words = HSKDatabaseSeeder.shared.getSampleWords()
+        let newWords = Array(words.shuffled().prefix(5))
+        cardStack.append(contentsOf: newWords)
+    }
+}
+
+// MARK: - Top Bar
+struct TopBar: View {
+    let current: Int
+    let goal: Int
+    let streak: Int
+    
+    private var progress: Double {
+        guard goal > 0 else { return 0 }
+        let currentDouble = Double(current)
+        let goalDouble = Double(goal)
+        return min(currentDouble / goalDouble, 1.0)
+    }
+    
+    var body: some View {
+        HStack {
+            // Streak
+            HStack(spacing: 4) {
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(.orange)
+                Text("\(streak)")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.orange)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.orange.opacity(0.1))
+            .cornerRadius(12)
+            
+            Spacer()
+            
+            // Progress
+            VStack(spacing: 4) {
+                Text("\(current)/\(goal)")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.primary)
+                
+                ProgressView(value: progress)
+                    .progressViewStyle(LinearProgressViewStyle(tint: .blue))
+                    .frame(width: 100, height: 4)
+            }
+            
+            Spacer()
+            
+            // HSK Level
+            Text("HSK 5")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.blue)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.blue.opacity(0.1))
+                .cornerRadius(12)
+        }
+    }
+}
+
+// MARK: - Word Card
+enum SwipeDirection {
+    case left, right
+}
+
+struct WordCard: View {
+    let word: HSKWord
+    let onRemove: (SwipeDirection) -> Void
+    
+    @State private var offset = CGSize.zero
+    @State private var rotation: Double = 0
+    @State private var showingBack = false
+    @State private var audioPlaying = false
+    
+    private let synthesizer = AVSpeechSynthesizer()
+    
+    var body: some View {
+        ZStack {
+            // Card Background
+            RoundedRectangle(cornerRadius: 25)
+                .fill(Color.white)
+                .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 25)
+                        .stroke(getBorderColor(), lineWidth: 3)
+                        .opacity(abs(offset.width) / 100.0)
+                )
+            
+            // Card Content
+            VStack(spacing: 20) {
+                // Flip indicator
+                HStack {
+                    Spacer()
+                    Button(action: { withAnimation { showingBack.toggle() } }) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 20))
+                            .foregroundColor(.gray)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 20)
+                
+                Spacer()
+                
+                if !showingBack {
+                    // Front side
+                    VStack(spacing: 25) {
+                        Text(word.hanzi)
+                            .font(.system(size: 80, weight: .bold))
                             .foregroundColor(.black)
                         
-                        // Pinyin with Audio Button
                         HStack(spacing: 12) {
-                            Text("[\(viewModel.currentWord.pinyin)]")
-                                .font(.system(size: 18, weight: .medium))
+                            Text(word.pinyin)
+                                .font(.system(size: 24, weight: .medium))
                                 .foregroundColor(.secondary)
                             
                             Button(action: playAudio) {
-                                Image(systemName: audioPlaying ? "speaker.wave.2.fill" : "speaker.wave.2")
-                                    .font(.system(size: 18))
-                                    .foregroundColor(.secondary)
+                                Image(systemName: audioPlaying ? "speaker.wave.3.fill" : "speaker.wave.2")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.blue)
                                     .scaleEffect(audioPlaying ? 1.2 : 1.0)
-                                    .animation(.easeInOut(duration: 0.2), value: audioPlaying)
                             }
                         }
                         
-                        // Definition
-                        VStack(spacing: 16) {
-                            Text("(n.) \(getVietnameseMeaning(viewModel.currentWord.meaning))")
-                                .font(.system(size: 17, weight: .regular))
-                                .foregroundColor(.black)
-                                .multilineTextAlignment(.center)
-                                .lineLimit(nil)
-                                .fixedSize(horizontal: false, vertical: true)
-                            
-                            // Example sentence - expandable
-                            if showingExample {
-                                if let example = viewModel.currentWord.example {
-                                    Text(example)
-                                        .font(.system(size: 15, weight: .regular))
-                                        .foregroundColor(.secondary)
-                                        .multilineTextAlignment(.center)
-                                        .lineLimit(nil)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                        .transition(.opacity.combined(with: .move(edge: .top)))
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 40)
-                        
-                        Spacer()
-                        
-                        // Action Buttons Row
-                        ActionButtonsRow(
-                            showingExample: $showingExample,
-                            showingInfo: $showingInfo,
-                            showingShare: $showingShare,
-                            isSaved: viewModel.isSaved,
-                            onToggleSave: viewModel.toggleSave,
-                            onInfo: { showingInfo = true },
-                            onShare: { showingShare = true }
-                        )
-                        .padding(.horizontal, 60)
-                        
-                        Spacer()
+                        Text(getVietnameseMeaning(word.meaning))
+                            .font(.system(size: 20))
+                            .foregroundColor(.primary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 30)
                     }
-                    
-                    // Bottom Navigation
-                    BottomNavigationBar(onNext: {
-                        viewModel.getNextWord()
-                        resetStates()
-                    })
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 34) // Safe area bottom
+                } else {
+                    // Back side
+                    VStack(spacing: 20) {
+                        Text("例句 Example")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                        
+                        if let example = word.example {
+                            Text(example)
+                                .font(.system(size: 18))
+                                .foregroundColor(.primary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 30)
+                        }
+                        
+                        HStack(spacing: 20) {
+                            VStack {
+                                Text("HSK")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Text("\(word.hskLevel)")
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.blue)
+                            }
+                            .frame(width: 60)
+                            .padding(.vertical, 10)
+                            .background(Color.blue.opacity(0.1))
+                            .cornerRadius(12)
+                        }
+                    }
                 }
+                
+                Spacer()
+                
+                // Swipe hints
+                HStack(spacing: 40) {
+                    SwipeHint(icon: "xmark", color: .red, text: "跳过")
+                        .opacity(offset.width < -50 ? 1 : 0.3)
+                    
+                    SwipeHint(icon: "heart.fill", color: .green, text: "保存")
+                        .opacity(offset.width > 50 ? 1 : 0.3)
+                }
+                .padding(.bottom, 30)
             }
+            .rotation3DEffect(
+                .degrees(showingBack ? 180 : 0),
+                axis: (x: 0, y: 1, z: 0)
+            )
         }
-        .onAppear {
-            wordDataManager.refreshData()
+        .frame(width: UIScreen.main.bounds.width - 40, height: UIScreen.main.bounds.height * 0.6)
+        .offset(x: offset.width, y: offset.height)
+        .rotationEffect(.degrees(rotation))
+        .gesture(
+            DragGesture()
+                .onChanged { gesture in
+                    offset = gesture.translation
+                    rotation = Double(gesture.translation.width / 20)
+                }
+                .onEnded { gesture in
+                    if abs(gesture.translation.width) > 100 {
+                        let direction: SwipeDirection = gesture.translation.width > 0 ? .right : .left
+                        withAnimation(.spring()) {
+                            offset = CGSize(
+                                width: gesture.translation.width > 0 ? 500 : -500,
+                                height: gesture.translation.height
+                            )
+                        }
+                        onRemove(direction)
+                    } else {
+                        withAnimation(.spring()) {
+                            offset = .zero
+                            rotation = 0
+                        }
+                    }
+                }
+        )
+    }
+    
+    private func getBorderColor() -> Color {
+        if offset.width > 0 {
+            return .green
+        } else if offset.width < 0 {
+            return .red
         }
-        .sheet(isPresented: $showingInfo) {
-            WordInfoSheet(word: viewModel.currentWord)
-        }
-        .sheet(isPresented: $showingShare) {
-            ShareSheet(word: viewModel.currentWord)
-        }
+        return .clear
     }
     
     private func playAudio() {
@@ -129,16 +369,14 @@ struct HomeView: View {
             audioPlaying = true
         }
         
-        viewModel.speakWord()
+        let utterance = AVSpeechUtterance(string: word.hanzi)
+        utterance.voice = AVSpeechSynthesisVoice(language: "zh-CN")
+        utterance.rate = 0.4
+        synthesizer.speak(utterance)
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
             audioPlaying = false
         }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-    }
-    
-    private func resetStates() {
-        showingExample = false
     }
     
     private func getVietnameseMeaning(_ english: String) -> String {
@@ -146,8 +384,7 @@ struct HomeView: View {
             "wide": "rộng", "method": "phương pháp", "help": "giúp đỡ",
             "competition": "cuộc thi", "express": "biểu đạt", "change": "thay đổi",
             "participate": "tham gia", "be late": "trễ", "plan": "kế hoạch",
-            "worry": "lo lắng", "learn": "học", "study": "học tập",
-            "good": "tốt", "beautiful": "đẹp", "big": "lớn", "small": "nhỏ"
+            "worry": "lo lắng", "learn": "học", "study": "học tập"
         ]
         
         for (eng, viet) in translations {
@@ -159,288 +396,198 @@ struct HomeView: View {
     }
 }
 
-// MARK: - Custom Status Bar
-struct CustomStatusBar: View {
-    var body: some View {
-        HStack {
-            // Time
-            Text("08:15")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundColor(.black)
-            
-            Spacer()
-            
-            // Signal and Battery Icons
-            HStack(spacing: 6) {
-                // Signal dots
-                HStack(spacing: 2) {
-                    Circle().fill(Color.black).frame(width: 4, height: 4)
-                    Circle().fill(Color.black).frame(width: 4, height: 4)
-                    Circle().fill(Color.black).frame(width: 4, height: 4)
-                }
-                
-                // WiFi icon
-                Image(systemName: "wifi")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.black)
-                
-                // Battery
-                Text("34")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(.black)
-            }
-        }
-        .padding(.horizontal, 24)
-    }
-}
-
-// MARK: - Progress Section
-struct ProgressSection: View {
-    let current: Int
-    let total: Int
-    
-    private var progress: Double {
-        guard total > 0 else { return 0 }
-        return min(Double(current) / Double(total), 1.0)
-    }
+struct SwipeHint: View {
+    let icon: String
+    let color: Color
+    let text: String
     
     var body: some View {
-        HStack {
-            // Bookmark icon
-            Image(systemName: "bookmark")
-                .font(.system(size: 16))
-                .foregroundColor(.black)
-            
-            // Progress indicator
-            Text("\(current)/\(total)")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundColor(.black)
-            
-            // Progress bar
-            ProgressView(value: progress)
-                .progressViewStyle(LinearProgressViewStyle(tint: .black))
-                .scaleEffect(x: 1, y: 0.8)
-                .frame(height: 4)
-            
-            Spacer()
-            
-            // Chart icon
-            Image(systemName: "chart.bar.fill")
-                .font(.system(size: 18))
-                .foregroundColor(.black)
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundColor(color)
+            Text(text)
+                .font(.caption)
+                .foregroundColor(.secondary)
         }
     }
 }
 
-// MARK: - Action Buttons Row
-struct ActionButtonsRow: View {
-    @Binding var showingExample: Bool
-    @Binding var showingInfo: Bool
-    @Binding var showingShare: Bool
-    let isSaved: Bool
-    let onToggleSave: () -> Void
-    let onInfo: () -> Void
-    let onShare: () -> Void
+// MARK: - Floating Menu Buttons
+struct FloatingMenuButtons: View {
+    @Binding var showLeftMenu: Bool
+    @Binding var showRightMenu: Bool
+    @Binding var showCenterMenu: Bool
+    
+    let onStatsTap: () -> Void
+    let onLibraryTap: () -> Void
+    let onProfileTap: () -> Void
+    let onSettingsTap: () -> Void
+    let onStudyTap: () -> Void
+    let onGameTap: () -> Void
+    let onPracticeTap: () -> Void
+    let onTestTap: () -> Void
     
     var body: some View {
-        HStack(spacing: 40) {
-            // Info button
-            Button(action: onInfo) {
-                Circle()
-                    .stroke(Color.black, lineWidth: 1.5)
-                    .frame(width: 44, height: 44)
-                    .overlay(
-                        Text("i")
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(.black)
-                    )
-            }
-            
-            // Share button
-            Button(action: onShare) {
-                Circle()
-                    .stroke(Color.black, lineWidth: 1.5)
-                    .frame(width: 44, height: 44)
-                    .overlay(
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 16))
-                            .foregroundColor(.black)
-                    )
-            }
-            
-            // Favorite button
-            Button(action: onToggleSave) {
-                Circle()
-                    .stroke(Color.black, lineWidth: 1.5)
-                    .frame(width: 44, height: 44)
-                    .overlay(
-                        Image(systemName: isSaved ? "heart.fill" : "heart")
-                            .font(.system(size: 16))
-                            .foregroundColor(isSaved ? .red : .black)
-                    )
-            }
-            
-            // Example/Bookmark button
-            Button(action: {
-                withAnimation(.spring()) {
-                    showingExample.toggle()
-                }
-            }) {
-                Circle()
-                    .stroke(Color.black, lineWidth: 1.5)
-                    .frame(width: 44, height: 44)
-                    .overlay(
-                        Image(systemName: showingExample ? "bookmark.fill" : "bookmark")
-                            .font(.system(size: 16))
-                            .foregroundColor(.black)
-                    )
-            }
-        }
-    }
-}
-
-// MARK: - Bottom Navigation Bar
-struct BottomNavigationBar: View {
-    let onNext: () -> Void
-    
-    var body: some View {
-        HStack {
-            // Grid button
-            Button(action: {}) {
-                Image(systemName: "grid.circle")
-                    .font(.system(size: 24))
-                    .foregroundColor(.black)
-                    .frame(width: 50, height: 50)
-                    .background(Color.gray.opacity(0.1))
-                    .clipShape(Circle())
-            }
-            
+        VStack {
             Spacer()
             
-            // Practice button (Üben equivalent)
-            Button(action: onNext) {
-                Text("学习")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.black)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 12)
-                    .background(Color.gray.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 25))
-            }
-            
-            Spacer()
-            
-            // Profile button
-            NavigationLink(destination: ProfileSettingsView()) {
-                Image(systemName: "person.circle")
-                    .font(.system(size: 24))
-                    .foregroundColor(.black)
-                    .frame(width: 50, height: 50)
-                    .background(Color.gray.opacity(0.1))
-                    .clipShape(Circle())
-            }
-        }
-    }
-}
-
-// MARK: - Word Info Sheet
-struct WordInfoSheet: View {
-    let word: HSKWord
-    @Environment(\.dismiss) var dismiss
-    
-    var body: some View {
-        NavigationView {
-            VStack(spacing: 20) {
-                Text(word.hanzi)
-                    .font(.system(size: 48, weight: .bold))
-                
-                Text("[\(word.pinyin)]")
-                    .font(.system(size: 18))
-                    .foregroundColor(.secondary)
-                
-                Text(word.meaning)
-                    .font(.system(size: 16))
-                    .multilineTextAlignment(.center)
-                
-                if let example = word.example {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("例句 Example:")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
+            HStack(alignment: .bottom) {
+                // Left Menu - Stats & Library
+                VStack(spacing: 12) {
+                    if showLeftMenu {
+                        MenuButton(icon: "chart.bar.fill", color: .purple, action: {
+                            showLeftMenu = false
+                            onStatsTap()
+                        })
+                        .transition(.scale.combined(with: .opacity))
                         
-                        Text(example)
-                            .font(.body)
-                            .padding()
-                            .background(Color.gray.opacity(0.1))
-                            .cornerRadius(8)
+                        MenuButton(icon: "books.vertical.fill", color: .orange, action: {
+                            showLeftMenu = false
+                            onLibraryTap()
+                        })
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                    
+                    FloatingButton(
+                        icon: "chart.pie.fill",
+                        color: .blue,
+                        isOpen: showLeftMenu
+                    ) {
+                        withAnimation(.spring()) {
+                            showLeftMenu.toggle()
+                            showRightMenu = false
+                            showCenterMenu = false
+                        }
                     }
                 }
                 
-                HStack {
-                    Text("HSK Level:")
-                        .fontWeight(.semibold)
-                    Text("\(word.hskLevel)")
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 4)
-                        .background(Color.blue.opacity(0.1))
-                        .foregroundColor(.blue)
-                        .cornerRadius(8)
+                Spacer()
+                
+                // Center Menu - Study Modes
+                VStack(spacing: 12) {
+                    if showCenterMenu {
+                        HStack(spacing: 12) {
+                            MenuButton(icon: "book.fill", color: .green, action: {
+                                showCenterMenu = false
+                                onStudyTap()
+                            })
+                            .transition(.scale.combined(with: .opacity))
+                            
+                            MenuButton(icon: "gamecontroller.fill", color: .orange, action: {
+                                showCenterMenu = false
+                                onGameTap()
+                            })
+                            .transition(.scale.combined(with: .opacity))
+                            
+                            MenuButton(icon: "rectangle.stack.fill", color: .purple, action: {
+                                showCenterMenu = false
+                                onPracticeTap()
+                            })
+                            .transition(.scale.combined(with: .opacity))
+                            
+                            MenuButton(icon: "checkmark.circle.fill", color: .red, action: {
+                                showCenterMenu = false
+                                onTestTap()
+                            })
+                            .transition(.scale.combined(with: .opacity))
+                        }
+                    }
+                    
+                    FloatingButton(
+                        icon: "play.fill",
+                        color: .green,
+                        isOpen: showCenterMenu,
+                        size: 64
+                    ) {
+                        withAnimation(.spring()) {
+                            showCenterMenu.toggle()
+                            showLeftMenu = false
+                            showRightMenu = false
+                        }
+                    }
                 }
                 
                 Spacer()
-            }
-            .padding()
-            .navigationTitle("词汇详情")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("关闭") { dismiss() }
+                
+                // Right Menu - Profile & Settings
+                VStack(spacing: 12) {
+                    if showRightMenu {
+                        MenuButton(icon: "person.fill", color: .indigo, action: {
+                            showRightMenu = false
+                            onProfileTap()
+                        })
+                        .transition(.scale.combined(with: .opacity))
+                        
+                        MenuButton(icon: "gearshape.fill", color: .gray, action: {
+                            showRightMenu = false
+                            onSettingsTap()
+                        })
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                    
+                    FloatingButton(
+                        icon: "person.circle.fill",
+                        color: .indigo,
+                        isOpen: showRightMenu
+                    ) {
+                        withAnimation(.spring()) {
+                            showRightMenu.toggle()
+                            showLeftMenu = false
+                            showCenterMenu = false
+                        }
+                    }
                 }
             }
+            .padding(.horizontal, 30)
+            .padding(.bottom, 40)
         }
     }
 }
 
-// MARK: - Share Sheet
-struct ShareSheet: View {
-    let word: HSKWord
-    @Environment(\.dismiss) var dismiss
+struct FloatingButton: View {
+    let icon: String
+    let color: Color
+    let isOpen: Bool
+    var size: CGFloat = 56
+    let action: () -> Void
     
     var body: some View {
-        VStack(spacing: 20) {
-            Text("分享词汇")
-                .font(.title2)
-                .fontWeight(.bold)
-            
-            VStack(spacing: 12) {
-                Text(word.hanzi)
-                    .font(.system(size: 32, weight: .bold))
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(color)
+                    .frame(width: size, height: size)
+                    .shadow(color: color.opacity(0.3), radius: 8, x: 0, y: 4)
                 
-                Text("[\(word.pinyin)]")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                Text(word.meaning)
-                    .font(.body)
-                    .multilineTextAlignment(.center)
+                Image(systemName: icon)
+                    .font(.system(size: size * 0.4))
+                    .foregroundColor(.white)
+                    .rotationEffect(.degrees(isOpen ? 45 : 0))
             }
-            .padding()
-            .background(Color.gray.opacity(0.1))
-            .cornerRadius(12)
-            
-            Button("分享到微信") {
-                // Share implementation
-                dismiss()
-            }
-            .buttonStyle(.borderedProminent)
-            
-            Button("取消") {
-                dismiss()
-            }
-            .buttonStyle(.bordered)
         }
-        .padding()
-        .presentationDetents([.medium])
+        .scaleEffect(isOpen ? 1.1 : 1)
+    }
+}
+
+struct MenuButton: View {
+    let icon: String
+    let color: Color
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(color)
+                    .frame(width: 48, height: 48)
+                    .shadow(color: color.opacity(0.3), radius: 4, x: 0, y: 2)
+                
+                Image(systemName: icon)
+                    .font(.system(size: 20))
+                    .foregroundColor(.white)
+            }
+        }
     }
 }
 

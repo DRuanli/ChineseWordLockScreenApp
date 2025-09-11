@@ -2,7 +2,7 @@
 //  ChineseWordLockScreenApp.swift
 //  ChineseWordLockScreen
 //
-//  Created by Lê Nguyễn on 9/9/25.
+//  Updated to use simplified navigation
 //
 
 import SwiftUI
