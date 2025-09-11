@@ -2,7 +2,7 @@
 //  ProgressWidget.swift
 //  WordWidget
 //
-//  Fixed progress tracking widget
+//  Fixed progress tracking widget with containerBackground API
 //
 
 import WidgetKit
@@ -78,7 +78,7 @@ struct ProgressWidgetEntryView: View {
         case .systemMedium:
             MediumProgressView(entry: entry)
         case .accessoryCircular:
-            CircularProgressView(entry: entry)
+            AccessoryCircularProgressView(entry: entry)
         default:
             SmallProgressView(entry: entry)
         }
@@ -153,6 +153,16 @@ struct SmallProgressView: View {
         }
         .padding()
         .widgetURL(URL(string: "chineseword://progress"))
+        .containerBackground(for: .widget) {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.98, green: 0.99, blue: 1.0),
+                    Color(red: 0.95, green: 0.97, blue: 1.0)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
     }
 }
 
@@ -244,7 +254,14 @@ struct MediumProgressView: View {
         .padding()
         .widgetURL(URL(string: "chineseword://progress"))
         .containerBackground(for: .widget) {
-            Color(UIColor.systemBackground)
+            LinearGradient(
+                colors: [
+                    Color(red: 0.98, green: 0.99, blue: 1.0),
+                    Color(red: 0.95, green: 0.97, blue: 1.0)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         }
     }
     
@@ -256,7 +273,7 @@ struct MediumProgressView: View {
     }
 }
 
-struct CircularProgressView: View {
+struct AccessoryCircularProgressView: View {
     let entry: StudyProgressEntry
     
     var body: some View {
@@ -289,6 +306,9 @@ struct CircularProgressView: View {
             }
         }
         .widgetURL(URL(string: "chineseword://progress"))
+        .containerBackground(for: .widget) {
+            Color.clear
+        }
     }
 }
 
@@ -303,11 +323,43 @@ struct ProgressWidget: Widget {
         .configurationDisplayName("学习进度 • Progress")
         .description("Theo dõi tiến độ học từ vựng hàng ngày")
         .supportedFamilies([.systemSmall, .systemMedium, .accessoryCircular])
+        .contentMarginsDisabled()
     }
+}
+
+// MARK: - Previews
+#Preview(as: .systemSmall) {
+    ProgressWidget()
+} timeline: {
+    StudyProgressEntry(
+        date: Date(),
+        learned: 8,
+        goal: 10,
+        streak: 5,
+        weeklyProgress: [12, 8, 15, 10, 6, 8, 8]
+    )
 }
 
 #Preview(as: .systemMedium) {
     ProgressWidget()
 } timeline: {
-    WordEntry.placeholder()
+    StudyProgressEntry(
+        date: Date(),
+        learned: 8,
+        goal: 10,
+        streak: 5,
+        weeklyProgress: [12, 8, 15, 10, 6, 8, 8]
+    )
+}
+
+#Preview(as: .accessoryCircular) {
+    ProgressWidget()
+} timeline: {
+    StudyProgressEntry(
+        date: Date(),
+        learned: 8,
+        goal: 10,
+        streak: 5,
+        weeklyProgress: [12, 8, 15, 10, 6, 8, 8]
+    )
 }

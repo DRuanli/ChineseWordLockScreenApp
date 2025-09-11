@@ -2,7 +2,7 @@
 //  WordWidget.swift
 //  WordWidget
 //
-//  Fixed minimalist widget implementation
+//  Fixed minimalist widget implementation with containerBackground API
 //
 
 import WidgetKit
@@ -202,7 +202,54 @@ struct SmallHomeWidget: View {
     let entry: WordEntry
     
     var body: some View {
-        ZStack {
+        VStack(spacing: 8) {
+            HStack {
+                Spacer()
+                Text("HSK\(entry.hskLevel)")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.blue)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(6)
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            
+            Spacer()
+            
+            Text(entry.hanzi)
+                .font(.system(size: 50, weight: .medium))
+                .foregroundColor(.primary)
+                .minimumScaleFactor(0.6)
+            
+            HStack(spacing: 1) {
+                ForEach(Array(entry.pinyin.split(separator: " ").enumerated()), id: \.offset) { index, syllable in
+                    Text(String(syllable))
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(index < entry.toneColors.count ? entry.toneColors[index] : .secondary)
+                }
+            }
+            
+            Spacer()
+            
+            Text(entry.vietnameseMeaning)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.primary)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+            
+            HStack(spacing: 4) {
+                ForEach(0..<3) { index in
+                    Circle()
+                        .fill(Color.blue.opacity(index == 2 ? 1.0 : 0.3))
+                        .frame(width: 4, height: 4)
+                }
+            }
+            .padding(.bottom, 12)
+        }
+        .widgetURL(URL(string: "chineseword://widget/word/\(entry.hanzi)"))
+        .containerBackground(for: .widget) {
             LinearGradient(
                 colors: [
                     Color(red: 0.95, green: 0.97, blue: 1.0),
@@ -211,55 +258,7 @@ struct SmallHomeWidget: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            
-            VStack(spacing: 8) {
-                HStack {
-                    Spacer()
-                    Text("HSK\(entry.hskLevel)")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.blue)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.blue.opacity(0.1))
-                        .cornerRadius(6)
-                }
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
-                
-                Spacer()
-                
-                Text(entry.hanzi)
-                    .font(.system(size: 50, weight: .medium))
-                    .foregroundColor(.primary)
-                    .minimumScaleFactor(0.6)
-                
-                HStack(spacing: 1) {
-                    ForEach(Array(entry.pinyin.split(separator: " ").enumerated()), id: \.offset) { index, syllable in
-                        Text(String(syllable))
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(index < entry.toneColors.count ? entry.toneColors[index] : .secondary)
-                    }
-                }
-                
-                Spacer()
-                
-                Text(entry.vietnameseMeaning)
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.primary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-                
-                HStack(spacing: 4) {
-                    ForEach(0..<3) { index in
-                        Circle()
-                            .fill(Color.blue.opacity(index == 2 ? 1.0 : 0.3))
-                            .frame(width: 4, height: 4)
-                    }
-                }
-                .padding(.bottom, 12)
-            }
         }
-        .widgetURL(URL(string: "chineseword://widget/word/\(entry.hanzi)"))
     }
 }
 
@@ -327,6 +326,16 @@ struct MediumHomeWidget: View {
         }
         .padding()
         .widgetURL(URL(string: "chineseword://widget/word/\(entry.hanzi)"))
+        .containerBackground(for: .widget) {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.98, green: 0.99, blue: 1.0),
+                    Color(red: 0.95, green: 0.98, blue: 1.0)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
     }
 }
 
@@ -450,6 +459,9 @@ struct CircularLockScreenWidget: View {
                 .minimumScaleFactor(0.5)
         }
         .widgetURL(URL(string: "chineseword://lockscreen/\(entry.hanzi)"))
+        .containerBackground(for: .widget) {
+            Color.clear
+        }
     }
 }
 
@@ -481,6 +493,9 @@ struct RectangularLockScreenWidget: View {
                 .foregroundColor(.secondary)
         }
         .widgetURL(URL(string: "chineseword://lockscreen/\(entry.hanzi)"))
+        .containerBackground(for: .widget) {
+            Color.clear
+        }
     }
 }
 
@@ -491,6 +506,9 @@ struct InlineLockScreenWidget: View {
         Text("\(entry.hanzi) • \(entry.vietnameseMeaning)")
             .font(.caption)
             .widgetURL(URL(string: "chineseword://lockscreen/\(entry.hanzi)"))
+            .containerBackground(for: .widget) {
+                Color.clear
+            }
     }
 }
 
@@ -524,6 +542,24 @@ struct WordWidget: Widget {
 }
 
 #Preview(as: .systemMedium) {
+    WordWidget()
+} timeline: {
+    WordEntry.placeholder()
+}
+
+#Preview(as: .systemLarge) {
+    WordWidget()
+} timeline: {
+    WordEntry.placeholder()
+}
+
+#Preview(as: .accessoryCircular) {
+    WordWidget()
+} timeline: {
+    WordEntry.placeholder()
+}
+
+#Preview(as: .accessoryRectangular) {
     WordWidget()
 } timeline: {
     WordEntry.placeholder()
