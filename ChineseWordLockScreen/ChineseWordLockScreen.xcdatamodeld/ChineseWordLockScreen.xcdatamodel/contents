@@ -24,43 +24,6 @@
         <attribute name="reviewCount" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="savedDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="srsLevel" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
-	<!-- Learning State (required) -->
-<attribute name="learningState" 
-          attributeType="Integer 16" 
-          defaultValueString="0" 
-          usesScalarValueType="YES"/>
-
-<!-- Response Time Tracking -->
-<attribute name="averageResponseTime" 
-          optional="YES" 
-          attributeType="Double" 
-          defaultValueString="0.0" 
-          usesScalarValueType="YES"/>
-
-<attribute name="lastResponseTime" 
-          optional="YES" 
-          attributeType="Double" 
-          defaultValueString="0.0" 
-          usesScalarValueType="YES"/>
-
-<!-- Difficulty Score -->
-<attribute name="difficultyScore" 
-          optional="YES" 
-          attributeType="Double" 
-          defaultValueString="0.5" 
-          usesScalarValueType="YES"/>
-
-<!-- Context Seen Count -->
-<attribute name="contextSeenCount" 
-          optional="YES" 
-          attributeType="Integer 32" 
-          defaultValueString="0" 
-          usesScalarValueType="YES"/>
-
-<!-- Last Quiz Type -->
-<attribute name="lastQuizType" 
-          optional="YES" 
-          attributeType="String"/>
         <relationship name="folder" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="PersonalFolder" inverseName="words" inverseEntity="PersonalFolder"/>
         <relationship name="user" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="User" inverseName="savedWords" inverseEntity="User"/>
     </entity>

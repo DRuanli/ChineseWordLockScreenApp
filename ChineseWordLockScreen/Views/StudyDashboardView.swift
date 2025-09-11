@@ -31,6 +31,10 @@ struct StudyDashboardView: View {
                         showingQuickStudy: $showingQuickStudy
                     )
                     
+                    // Review Today Section
+                    if !wordDataManager.wordsForReview.isEmpty {
+                        ReviewTodaySection(words: wordDataManager.wordsForReview)
+                    }
                     
                     // Recent Activity
                     RecentActivitySection(recentWords: Array(wordDataManager.savedWords.prefix(5)))
@@ -46,6 +50,9 @@ struct StudyDashboardView: View {
         }
         .sheet(isPresented: $showingQuickStudy) {
             QuickStudyView()
+        }
+        .onAppear {
+            wordDataManager.refreshData()
         }
     }
 }

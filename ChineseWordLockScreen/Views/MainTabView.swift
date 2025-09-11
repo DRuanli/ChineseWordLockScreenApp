@@ -39,6 +39,7 @@ struct MainTabView: View {
             }
         }
         .onAppear {
+            notificationManager.requestAuthorization()
             setupTabBarAppearance()
         }
         .fullScreenCover(isPresented: $showingCategories) {

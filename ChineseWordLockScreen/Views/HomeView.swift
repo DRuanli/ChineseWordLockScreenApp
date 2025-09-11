@@ -6,565 +6,689 @@
 //
 
 import SwiftUI
+import AVFoundation
 
 struct HomeView: View {
+    @StateObject private var viewModel = HomeViewModel()
     @StateObject private var wordDataManager = WordDataManager.shared
     @StateObject private var authManager = AuthenticationManager.shared
-    @State private var learningMode: LearningMode = .newWord
-    @State private var currentWordData: (word: HSKWord, state: WordLearningState, quizType: QuizType?)?
-    @State private var showingQuiz = false
-    @State private var showingWordDetail = false
-    @State private var quizStartTime = Date()
-    @State private var showingSettings = false
-    @State private var dailyProgress: Float = 0.0
     
-    enum LearningMode: String, CaseIterable {
-        case newWord = "Học từ mới"
-        case review = "Ôn tập"
-        
-        var icon: String {
-            switch self {
-            case .newWord: return "plus.circle.fill"
-            case .review: return "arrow.clockwise.circle.fill"
+    @State private var dragOffset: CGSize = .zero
+    @State private var showingShareView = false
+    @State private var showingInfo = false
+    @State private var capturedImage: UIImage?
+    @State private var audioPlaying = false
+    @State private var currentWordIndex = 0
+    @State private var totalWords = 5
+    
+    // Swipe threshold
+    private let swipeThreshold: CGFloat = 100
+    
+    var body: some View {
+        ZStack {
+            // Clean beige background
+            Color(red: 0.95, green: 0.93, blue: 0.88)
+                .ignoresSafeArea()
+            
+            if showingShareView {
+                ShareView(
+                    word: viewModel.currentWord,
+                    capturedImage: $capturedImage,
+                    isPresented: $showingShareView
+                )
+                .transition(.opacity)
+            } else {
+                VStack(spacing: 0) {
+                    // Top bar with progress indicator
+                    TopProgressBar(currentIndex: currentWordIndex, total: totalWords)
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+                    
+                    // Main vocabulary card
+                    VocabularyCard(
+                        word: viewModel.currentWord,
+                        audioPlaying: $audioPlaying,
+                        onPlayAudio: playAudio
+                    )
+                    .offset(dragOffset)
+                    .rotationEffect(.degrees(Double(dragOffset.width / 20)))
+                    .opacity(1 - Double(abs(dragOffset.width) / 200))
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                withAnimation(.interactiveSpring()) {
+                                    dragOffset = value.translation
+                                }
+                            }
+                            .onEnded { value in
+                                handleSwipe(value.translation)
+                            }
+                    )
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 40)
+                    
+                    // Bottom action buttons
+                    ActionButtonBar(
+                        onInfo: { showingInfo = true },
+                        onShare: shareWord,
+                        onLike: toggleLike,
+                        onBookmark: toggleBookmark,
+                        isLiked: viewModel.isSaved,
+                        isBookmarked: viewModel.isSaved
+                    )
+                    .padding(.horizontal, 40)
+                    .padding(.bottom, 30)
+                }
             }
         }
+        .onAppear {
+            wordDataManager.refreshData()
+            setupScreenshotDetection()
+        }
+        .sheet(isPresented: $showingInfo) {
+            WordInfoSheet(word: viewModel.currentWord)
+        }
+    }
+    
+    // MARK: - Helper Methods
+    private func handleSwipe(_ translation: CGSize) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            // Check if swipe exceeds threshold
+            if abs(translation.width) > swipeThreshold || abs(translation.height) > swipeThreshold {
+                // Determine swipe direction and load next word
+                if abs(translation.width) > abs(translation.height) {
+                    // Horizontal swipe
+                    if translation.width > 0 {
+                        // Swipe right - previous word
+                        if currentWordIndex > 0 {
+                            currentWordIndex -= 1
+                            viewModel.getPreviousWord()
+                        }
+                    } else {
+                        // Swipe left - next word
+                        if currentWordIndex < totalWords - 1 {
+                            currentWordIndex += 1
+                            viewModel.getNextWord()
+                        }
+                    }
+                } else {
+                    // Vertical swipe
+                    if translation.height > 0 {
+                        // Swipe down - could be used for special action
+                        if currentWordIndex < totalWords - 1 {
+                            currentWordIndex += 1
+                            viewModel.getNextWord()
+                        }
+                    } else {
+                        // Swipe up - could be used for special action
+                        if currentWordIndex < totalWords - 1 {
+                            currentWordIndex += 1
+                            viewModel.getNextWord()
+                        }
+                    }
+                }
+            }
+            // Reset offset
+            dragOffset = .zero
+        }
+    }
+    
+    private func playAudio() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            audioPlaying = true
+        }
+        viewModel.speakWord()
         
-        var color: Color {
-            switch self {
-            case .newWord: return .blue
-            case .review: return .orange
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            audioPlaying = false
+        }
+    }
+    
+    private func shareWord() {
+        // Capture the card as image first
+        captureCard()
+        showingShareView = true
+    }
+    
+    private func toggleLike() {
+        viewModel.toggleSave()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+    
+    private func toggleBookmark() {
+        viewModel.toggleSave()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+    
+    private func captureCard() {
+        // Implementation for capturing the card as image
+        // This would use a view snapshot extension
+    }
+    
+    private func setupScreenshotDetection() {
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.userDidTakeScreenshotNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            showingShareView = true
+        }
+    }
+}
+
+// MARK: - Top Progress Bar
+struct TopProgressBar: View {
+    @StateObject private var wordDataManager = WordDataManager.shared
+    let currentIndex: Int
+    let total: Int
+    
+    var progress: Double {
+        guard total > 0 else { return 0 }
+        return Double(currentIndex + 1) / Double(total)
+    }
+    
+    var body: some View {
+        HStack {
+            Image(systemName: "bookmark")
+                .font(.title2)
+                .foregroundColor(.black.opacity(0.7))
+            
+            Text("\(currentIndex + 1)/\(total)")
+                .font(.headline)
+                .foregroundColor(.black.opacity(0.7))
+            
+            // Progress bar
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.black.opacity(0.2))
+                        .frame(height: 8)
+                    
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.black.opacity(0.7))
+                        .frame(width: geometry.size.width * progress, height: 8)
+                        .animation(.spring(), value: progress)
+                }
+            }
+            .frame(height: 8)
+            
+            Spacer()
+            
+            Image(systemName: "crown")
+                .font(.title2)
+                .foregroundColor(.black.opacity(0.7))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    Circle()
+                        .fill(Color.white.opacity(0.9))
+                )
+        }
+    }
+}
+
+// MARK: - Vocabulary Card
+struct VocabularyCard: View {
+    let word: HSKWord
+    @Binding var audioPlaying: Bool
+    let onPlayAudio: () -> Void
+    
+    var body: some View {
+        VStack(spacing: 25) {
+            Spacer()
+            
+            // Main word
+            Text(word.hanzi)
+                .font(.system(size: 80, weight: .bold, design: .serif))
+                .foregroundColor(.black)
+            
+            // Pronunciation with audio button
+            HStack(spacing: 12) {
+                Text(word.pinyin)
+                    .font(.system(size: 24, weight: .regular))
+                    .foregroundColor(.black.opacity(0.8))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(Color.white.opacity(0.9))
+                    )
+                
+                Button(action: onPlayAudio) {
+                    Image(systemName: audioPlaying ? "speaker.wave.3.fill" : "speaker.wave.2.fill")
+                        .font(.title2)
+                        .foregroundColor(.black.opacity(0.7))
+                        .scaleEffect(audioPlaying ? 1.2 : 1.0)
+                }
+            }
+            
+            // Part of speech and definition
+            VStack(spacing: 12) {
+                Text("(n.) \(word.meaning)")
+                    .font(.system(size: 22, weight: .regular))
+                    .foregroundColor(.black.opacity(0.9))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+            }
+            .padding(.horizontal, 30)
+            
+            // Example sentence
+            if let example = word.example {
+                Text(example)
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundColor(.black.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(6)
+                    .padding(.horizontal, 30)
+                    .padding(.top, 10)
+            }
+            
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color.white)
+                .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+        )
+    }
+}
+
+// MARK: - Action Button Bar
+struct ActionButtonBar: View {
+    let onInfo: () -> Void
+    let onShare: () -> Void
+    let onLike: () -> Void
+    let onBookmark: () -> Void
+    let isLiked: Bool
+    let isBookmarked: Bool
+    
+    var body: some View {
+        HStack(spacing: 40) {
+            // Info button
+            Button(action: onInfo) {
+                Image(systemName: "info.circle")
+                    .font(.title)
+                    .foregroundColor(.black.opacity(0.7))
+                    .frame(width: 44, height: 44)
+            }
+            
+            // Share button
+            Button(action: onShare) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.title)
+                    .foregroundColor(.black.opacity(0.7))
+                    .frame(width: 44, height: 44)
+            }
+            
+            // Like button
+            Button(action: onLike) {
+                Image(systemName: isLiked ? "heart.fill" : "heart")
+                    .font(.title)
+                    .foregroundColor(isLiked ? .red : .black.opacity(0.7))
+                    .frame(width: 44, height: 44)
+            }
+            
+            // Bookmark button
+            Button(action: onBookmark) {
+                Image(systemName: isBookmarked ? "bookmark.fill" : "bookmark")
+                    .font(.title)
+                    .foregroundColor(isBookmarked ? .blue : .black.opacity(0.7))
+                    .frame(width: 44, height: 44)
             }
         }
     }
+}
+
+// MARK: - Share View
+struct ShareView: View {
+    let word: HSKWord
+    @Binding var capturedImage: UIImage?
+    @Binding var isPresented: Bool
+    @State private var showingActivityView = false
+    
+    var body: some View {
+        ZStack {
+            // Background
+            Color.black.opacity(0.9)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    isPresented = false
+                }
+            
+            VStack(spacing: 30) {
+                // Close button
+                HStack {
+                    Button(action: { isPresented = false }) {
+                        Image(systemName: "xmark")
+                            .font(.title2)
+                            .foregroundColor(.white)
+                            .frame(width: 44, height: 44)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal)
+                
+                // Card preview
+                ShareableCard(word: word)
+                    .frame(maxWidth: 350)
+                    .padding(.horizontal, 20)
+                
+                // Action buttons
+                VStack(spacing: 20) {
+                    HStack(spacing: 30) {
+                        ShareActionButton(icon: "arrow.down.circle", label: "Save image") {
+                            saveImage()
+                        }
+                        
+                        ShareActionButton(icon: "doc.on.doc", label: "Copy text") {
+                            copyText()
+                        }
+                        
+                        ShareActionButton(icon: "bookmark", label: "Add to collection") {
+                            addToCollection()
+                        }
+                    }
+                    
+                    // Share options
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 20) {
+                            ShareAppButton(appIcon: "message.fill", appName: "Messages", color: .green) {
+                                shareToApp("messages")
+                            }
+                            
+                            ShareAppButton(appIcon: "f.circle.fill", appName: "Facebook", color: .blue) {
+                                shareToApp("facebook")
+                            }
+                            
+                            ShareAppButton(appIcon: "camera.circle.fill", appName: "Facebook\nStories", color: .blue) {
+                                shareToApp("fb_stories")
+                            }
+                            
+                            ShareAppButton(appIcon: "play.rectangle.fill", appName: "Facebook\nReels", color: .blue) {
+                                shareToApp("fb_reels")
+                            }
+                            
+                            ShareAppButton(appIcon: "message.circle.fill", appName: "Facebook\nMessenger", color: .blue) {
+                                shareToApp("messenger")
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+                
+                Spacer()
+            }
+            .padding(.vertical, 20)
+        }
+    }
+    
+    private func saveImage() {
+        // Save to photo library
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+    
+    private func copyText() {
+        let text = "\(word.hanzi)\n\(word.pinyin)\n\(word.meaning)"
+        UIPasteboard.general.string = text
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+    
+    private func addToCollection() {
+        // Add to saved words
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+    
+    private func shareToApp(_ app: String) {
+        showingActivityView = true
+    }
+}
+
+// MARK: - Shareable Card
+struct ShareableCard: View {
+    let word: HSKWord
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            // Word
+            Text(word.hanzi)
+                .font(.system(size: 60, weight: .bold, design: .serif))
+                .foregroundColor(.black)
+                .padding(.top, 40)
+            
+            // Pronunciation
+            Text("'\(word.pinyin)")
+                .font(.system(size: 20))
+                .foregroundColor(.black.opacity(0.8))
+            
+            // Definition
+            Text("(n.) \(word.meaning)")
+                .font(.system(size: 18))
+                .foregroundColor(.black.opacity(0.9))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 30)
+            
+            // Example
+            if let example = word.example {
+                Text(example)
+                    .font(.system(size: 16))
+                    .foregroundColor(.black.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 30)
+                    .padding(.top, 10)
+            }
+            
+            // Watermark
+            Text("vocabulary")
+                .font(.caption)
+                .foregroundColor(.black.opacity(0.4))
+                .padding(.bottom, 30)
+        }
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(Color.black.opacity(0.1), lineWidth: 1)
+                )
+        )
+    }
+}
+
+// MARK: - Share Action Button
+struct ShareActionButton: View {
+    let icon: String
+    let label: String
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.title2)
+                    .foregroundColor(.white)
+                
+                Text(label)
+                    .font(.caption)
+                    .foregroundColor(.white)
+            }
+            .frame(width: 100)
+        }
+    }
+}
+
+// MARK: - Share App Button
+struct ShareAppButton: View {
+    let appIcon: String
+    let appName: String
+    let color: Color
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Image(systemName: appIcon)
+                    .font(.largeTitle)
+                    .foregroundColor(.white)
+                    .frame(width: 60, height: 60)
+                    .background(color)
+                    .clipShape(Circle())
+                
+                Text(appName)
+                    .font(.caption2)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+            }
+            .frame(width: 80)
+        }
+    }
+}
+
+// MARK: - Word Info Sheet
+struct WordInfoSheet: View {
+    let word: HSKWord
+    @Environment(\.dismiss) var dismiss
     
     var body: some View {
         NavigationView {
-            ZStack {
-                // Background gradient
-                LinearGradient(
-                    colors: [Color.blue.opacity(0.1), Color.purple.opacity(0.1)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
-                
-                ScrollView {
-                    VStack(spacing: 20) {
-                        // Header with user info
-                        headerSection
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    // Word header
+                    VStack(spacing: 12) {
+                        Text(word.hanzi)
+                            .font(.system(size: 60, weight: .bold))
+                            .frame(maxWidth: .infinity)
                         
-                        // Daily Progress
-                        dailyProgressSection
+                        Text(word.pinyin)
+                            .font(.title2)
+                            .foregroundColor(.secondary)
                         
-                        // Mode Selector
-                        modeSelectorSection
-                        
-                        // Current Word Card
-                        if let wordData = currentWordData {
-                            WordStudyCard(
-                                wordData: wordData,
-                                onStartQuiz: { showingQuiz = true },
-                                onToggleFavorite: toggleFavorite,
-                                onShowDetail: { showingWordDetail = true },
-                                onNext: loadNextWord
-                            )
-                            .transition(.asymmetric(
-                                insertion: .move(edge: .trailing).combined(with: .opacity),
-                                removal: .move(edge: .leading).combined(with: .opacity)
-                            ))
-                        }
-                        
-                        // Queue Status
-                        queueStatusSection
-                        
-                        // Quick Actions
-                        quickActionsSection
-                    }
-                    .padding()
-                }
-            }
-            .navigationBarHidden(true)
-            .onAppear {
-                loadNextWord()
-                updateDailyProgress()
-            }
-            .sheet(isPresented: $showingQuiz) {
-                if let wordData = currentWordData {
-                    QuizView(
-                        wordData: wordData,
-                        onComplete: handleQuizCompletion
-                    )
-                }
-            }
-            .sheet(isPresented: $showingWordDetail) {
-                if let wordData = currentWordData {
-                    WordDetailView(word: wordData.word)
-                }
-            }
-        }
-    }
-    
-    // MARK: - View Components
-    private var headerSection: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Xin chào, \(authManager.currentUser?.username ?? "Học viên")!")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                
-                Text("Đã học \(wordDataManager.wordsLearnedToday)/\(wordDataManager.dailyNewWordLimit) từ hôm nay")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            
-            Spacer()
-            
-            Button(action: { showingSettings = true }) {
-                Image(systemName: "gearshape.fill")
-                    .font(.title2)
-                    .foregroundColor(.blue)
-            }
-        }
-    }
-    
-    private var dailyProgressSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Tiến độ hôm nay")
-                    .font(.headline)
-                
-                Spacer()
-                
-                Text("\(Int(dailyProgress * 100))%")
-                    .font(.caption)
-                    .fontWeight(.bold)
-                    .foregroundColor(.blue)
-            }
-            
-            ProgressView(value: dailyProgress)
-                .tint(.blue)
-                .scaleEffect(y: 2)
-            
-            HStack(spacing: 20) {
-                StatLabel(
-                    icon: "star.fill",
-                    value: "\(wordDataManager.introducedWordsQueue.count)",
-                    label: "Đã giới thiệu",
-                    color: .orange
-                )
-                
-                StatLabel(
-                    icon: "brain",
-                    value: "\(wordDataManager.learningWordsQueue.count)",
-                    label: "Đang học",
-                    color: .yellow
-                )
-                
-                StatLabel(
-                    icon: "checkmark.circle.fill",
-                    value: "\(wordDataManager.reviewWordsQueue.count)",
-                    label: "Cần ôn tập",
-                    color: .green
-                )
-            }
-            .font(.caption)
-        }
-        .padding()
-        .background(Color.white)
-        .cornerRadius(12)
-        .shadow(radius: 2)
-    }
-    
-    private var modeSelectorSection: some View {
-        HStack(spacing: 12) {
-            ForEach(LearningMode.allCases, id: \.self) { mode in
-                Button(action: {
-                    withAnimation(.spring()) {
-                        learningMode = mode
-                        loadNextWord()
-                    }
-                }) {
-                    HStack {
-                        Image(systemName: mode.icon)
-                        Text(mode.rawValue)
-                            .fontWeight(.medium)
-                    }
-                    .foregroundColor(learningMode == mode ? .white : mode.color)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(
-                        learningMode == mode ?
-                        mode.color : mode.color.opacity(0.1)
-                    )
-                    .cornerRadius(20)
-                }
-            }
-        }
-    }
-    
-    private var queueStatusSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Trạng thái hàng đợi")
-                .font(.headline)
-            
-            VStack(spacing: 8) {
-                QueueStatusRow(
-                    state: .new,
-                    count: wordDataManager.newWordsQueue.count,
-                    label: "Từ mới chưa học"
-                )
-                
-                QueueStatusRow(
-                    state: .learning,
-                    count: wordDataManager.learningWordsQueue.filter {
-                        ($0.nextReviewDate ?? Date()) <= Date()
-                    }.count,
-                    label: "Cần ôn tập ngay"
-                )
-                
-                QueueStatusRow(
-                    state: .review,
-                    count: wordDataManager.reviewWordsQueue.filter {
-                        ($0.nextReviewDate ?? Date()) <= Date()
-                    }.count,
-                    label: "Đến hạn ôn tập"
-                )
-                
-                QueueStatusRow(
-                    state: .mastered,
-                    count: wordDataManager.masteredWordsQueue.count,
-                    label: "Đã thành thạo"
-                )
-            }
-        }
-        .padding()
-        .background(Color.white)
-        .cornerRadius(12)
-        .shadow(radius: 2)
-    }
-    
-    private var quickActionsSection: some View {
-        HStack(spacing: 12) {
-            NavigationLink(destination: LibraryView()) {
-                QuickActionButton(
-                    icon: "books.vertical.fill",
-                    title: "Thư viện",
-                    color: .purple
-                )
-            }
-            
-            NavigationLink(destination: StudyDashboardView()) {
-                QuickActionButton(
-                    icon: "chart.line.uptrend.xyaxis",
-                    title: "Thống kê",
-                    color: .green
-                )
-            }
-            
-            NavigationLink(destination: QuickStudyView()) {
-                QuickActionButton(
-                    icon: "timer",
-                    title: "Luyện tập",
-                    color: .orange
-                )
-            }
-        }
-    }
-    
-    // MARK: - Methods
-    private func loadNextWord() {
-        currentWordData = wordDataManager.getNextWord(isNewWordMode: learningMode == .newWord)
-        quizStartTime = Date()
-    }
-    
-    private func toggleFavorite() {
-        guard let wordData = currentWordData else { return }
-        
-        // Find saved word
-        if let savedWord = wordDataManager.savedWords.first(where: {
-            $0.hanzi == wordData.word.hanzi
-        }) {
-            wordDataManager.toggleFavorite(for: savedWord)
-        }
-    }
-    
-    private func handleQuizCompletion(isCorrect: Bool) {
-        guard let wordData = currentWordData else { return }
-        
-        let responseTime = Date().timeIntervalSince(quizStartTime)
-        
-        // If it's a new word, introduce it first
-        if wordData.state == .new {
-            wordDataManager.introduceWord(wordData.word)
-        } else {
-            // Update existing word
-            if let savedWord = wordDataManager.savedWords.first(where: {
-                $0.hanzi == wordData.word.hanzi
-            }) {
-                wordDataManager.updateWordAfterQuiz(savedWord, isCorrect: isCorrect, responseTime: responseTime)
-            }
-        }
-        
-        // Load next word
-        loadNextWord()
-        updateDailyProgress()
-    }
-    
-    private func updateDailyProgress() {
-        let total = wordDataManager.dailyNewWordLimit
-        let completed = wordDataManager.wordsLearnedToday
-        dailyProgress = min(Float(completed) / Float(total), 1.0)
-    }
-}
-
-// MARK: - Supporting Views
-struct WordStudyCard: View {
-    let wordData: (word: HSKWord, state: WordLearningState, quizType: QuizType?)
-    let onStartQuiz: () -> Void
-    let onToggleFavorite: () -> Void
-    let onShowDetail: () -> Void
-    let onNext: () -> Void
-    
-    @State private var isFlipped = false
-    @State private var showPinyin = false
-    
-    var body: some View {
-        VStack(spacing: 16) {
-            // State indicator
-            HStack {
-                Label(wordData.state.displayName, systemImage: stateIcon)
-                    .font(.caption)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(wordData.state.color)
-                    .cornerRadius(15)
-                
-                Spacer()
-                
-                Text("HSK \(wordData.word.hskLevel)")
-                    .font(.caption)
-                    .fontWeight(.bold)
-                    .foregroundColor(.secondary)
-            }
-            
-            // Main card
-            VStack(spacing: 20) {
-                // Hanzi
-                Text(wordData.word.hanzi)
-                    .font(.system(size: 60, weight: .bold))
-                    .foregroundColor(.primary)
-                    .onTapGesture {
-                        withAnimation(.spring()) {
-                            showPinyin.toggle()
-                        }
-                    }
-                
-                // Pinyin (toggle visibility)
-                if showPinyin {
-                    Text(wordData.word.pinyin)
-                        .font(.title2)
-                        .foregroundColor(.secondary)
-                        .transition(.scale.combined(with: .opacity))
-                }
-                
-                // Meaning
-                if isFlipped || wordData.state == .new {
-                    VStack(spacing: 8) {
-                        Text(wordData.word.meaning)
+                        Text(word.meaning)
                             .font(.title3)
                             .multilineTextAlignment(.center)
                         
-                        if let example = wordData.word.example {
-                            Text(example)
-                                .font(.body)
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal)
-                        }
+                        // Vietnamese meaning
+                        Text(getVietnameseMeaning(word.meaning))
+                            .font(.title3)
+                            .foregroundColor(.blue)
+                            .multilineTextAlignment(.center)
                     }
-                    .transition(.scale.combined(with: .opacity))
-                }
-                
-                // Quiz type indicator
-                if let quizType = wordData.quizType {
-                    Label(quizTypeDescription(quizType), systemImage: "questionmark.circle")
-                        .font(.caption)
-                        .foregroundColor(.blue)
+                    .padding(.vertical, 20)
+                    
+                    Divider()
+                    
+                    // Additional information
+                    VStack(alignment: .leading, spacing: 16) {
+                        InfoRow(label: "HSK Level", value: "HSK \(word.hskLevel)")
+                        
+                        if let example = word.example {
+                            InfoRow(label: "Example", value: example)
+                        }
+                        
+                        InfoRow(label: "Part of Speech", value: getPartOfSpeech(word.meaning))
+                        
+                        // Tone information
+                        InfoRow(label: "Tones", value: getTonePattern(word.pinyin))
+                        
+                        // Usage frequency (mock data for now)
+                        InfoRow(label: "Frequency", value: "Common")
+                    }
+                    .padding(.horizontal)
                 }
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 300)
-            .padding()
-            .background(Color.white)
-            .cornerRadius(20)
-            .shadow(radius: 5)
-            .rotation3DEffect(
-                .degrees(isFlipped ? 180 : 0),
-                axis: (x: 0, y: 1, z: 0)
-            )
-            .onTapGesture {
-                if wordData.state != .new {
-                    withAnimation(.spring()) {
-                        isFlipped.toggle()
-                    }
+            .navigationTitle("Word Details")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }
                 }
             }
-            
-            // Action buttons
-            HStack(spacing: 16) {
-                Button(action: onToggleFavorite) {
-                    Image(systemName: "heart")
-                        .font(.title2)
-                        .foregroundColor(.pink)
-                        .frame(width: 50, height: 50)
-                        .background(Color.pink.opacity(0.1))
-                        .clipShape(Circle())
-                }
-                
-                Button(action: onShowDetail) {
-                    Image(systemName: "info.circle")
-                        .font(.title2)
-                        .foregroundColor(.blue)
-                        .frame(width: 50, height: 50)
-                        .background(Color.blue.opacity(0.1))
-                        .clipShape(Circle())
-                }
-                
-                if wordData.state == .new {
-                    Button(action: {
-                        // Introduce word
-                        WordDataManager.shared.introduceWord(wordData.word)
-                        onNext()
-                    }) {
-                        HStack {
-                            Image(systemName: "plus.circle.fill")
-                            Text("Thêm vào học")
-                        }
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
-                        .background(Color.green)
-                        .cornerRadius(25)
-                    }
-                } else {
-                    Button(action: onStartQuiz) {
-                        HStack {
-                            Image(systemName: "play.fill")
-                            Text("Bắt đầu Quiz")
-                        }
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
-                        .background(Color.blue)
-                        .cornerRadius(25)
-                    }
-                }
-                
-                Button(action: onNext) {
-                    Image(systemName: "arrow.right.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                        .frame(width: 50, height: 50)
-                        .background(Color.orange.opacity(0.1))
-                        .clipShape(Circle())
-                }
-            }
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color.gray.opacity(0.05))
-        )
-    }
-    
-    private var stateIcon: String {
-        switch wordData.state {
-        case .new: return "sparkles"
-        case .introduced: return "eye"
-        case .learning: return "brain"
-        case .review: return "arrow.clockwise"
-        case .mastered: return "crown"
         }
     }
     
-    private func quizTypeDescription(_ type: QuizType) -> String {
-        switch type {
-        case .recognition: return "Nhận diện nghĩa"
-        case .recall: return "Nhớ lại chữ Hán"
-        case .audio: return "Nghe và chọn"
-        case .context: return "Điền vào câu"
+    private func getVietnameseMeaning(_ english: String) -> String {
+        let translations: [String: String] = [
+            "wide": "rộng",
+            "method": "phương pháp",
+            "help": "giúp đỡ",
+            "competition": "cuộc thi",
+            "express": "biểu đạt",
+            "change": "thay đổi",
+            "participate": "tham gia",
+            "be late": "trễ",
+            "plan": "kế hoạch",
+            "worry": "lo lắng",
+            "learn": "học",
+            "study": "học tập"
+        ]
+        
+        for (eng, viet) in translations {
+            if english.lowercased().contains(eng) {
+                return viet
+            }
         }
+        return english
+    }
+    
+    private func getPartOfSpeech(_ meaning: String) -> String {
+        // Simple detection based on meaning patterns
+        if meaning.contains("to ") {
+            return "Verb"
+        } else if meaning.contains("ing") {
+            return "Gerund/Noun"
+        } else {
+            return "Noun"
+        }
+    }
+    
+    private func getTonePattern(_ pinyin: String) -> String {
+        var pattern = ""
+        let syllables = pinyin.split(separator: " ")
+        
+        for syllable in syllables {
+            let tone = detectTone(String(syllable))
+            pattern += "Tone \(tone == 0 ? "neutral" : String(tone)) "
+        }
+        
+        return pattern.trimmingCharacters(in: .whitespaces)
+    }
+    
+    private func detectTone(_ syllable: String) -> Int {
+        let tone1 = ["ā", "ē", "ī", "ō", "ū", "ǖ"]
+        let tone2 = ["á", "é", "í", "ó", "ú", "ǘ"]
+        let tone3 = ["ǎ", "ě", "ǐ", "ǒ", "ǔ", "ǚ"]
+        let tone4 = ["à", "è", "ì", "ò", "ù", "ǜ"]
+        
+        for char in syllable {
+            let charStr = String(char)
+            if tone1.contains(where: { charStr.contains($0) }) { return 1 }
+            if tone2.contains(where: { charStr.contains($0) }) { return 2 }
+            if tone3.contains(where: { charStr.contains($0) }) { return 3 }
+            if tone4.contains(where: { charStr.contains($0) }) { return 4 }
+        }
+        return 0
     }
 }
 
-struct StatLabel: View {
-    let icon: String
+struct InfoRow: View {
+    let label: String
     let value: String
-    let label: String
-    let color: Color
     
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon)
-                .foregroundColor(color)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(value)
-                    .fontWeight(.bold)
-                Text(label)
-                    .foregroundColor(.secondary)
-            }
-        }
-    }
-}
-
-struct QueueStatusRow: View {
-    let state: WordLearningState
-    let count: Int
-    let label: String
-    
-    var body: some View {
-        HStack {
-            Circle()
-                .fill(state.color)
-                .frame(width: 8, height: 8)
-            
+        VStack(alignment: .leading, spacing: 4) {
             Text(label)
-                .font(.subheadline)
+                .font(.caption)
+                .foregroundColor(.secondary)
             
-            Spacer()
-            
-            Text("\(count)")
-                .font(.subheadline)
-                .fontWeight(.bold)
-                .foregroundColor(count > 0 ? state.color : .secondary)
+            Text(value)
+                .font(.body)
         }
     }
 }
 
-struct QuickActionButton: View {
-    let icon: String
-    let title: String
-    let color: Color
-    
-    var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.title2)
-                .foregroundColor(.white)
-                .frame(width: 50, height: 50)
-                .background(color)
-                .clipShape(Circle())
-            
-            Text(title)
-                .font(.caption)
-                .foregroundColor(.primary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .background(Color.gray.opacity(0.05))
-        .cornerRadius(12)
-    }
+// MARK: - Preview
+#Preview {
+    HomeView()
 }

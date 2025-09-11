@@ -262,10 +262,3 @@ extension Calendar {
         return self.date(from: components) ?? date
     }
 }
-
-extension HSKDatabaseSeeder {
-    func getAllWordsForLevel(_ level: Int) -> [HSKWord] {
-        // Return all words for a specific HSK level
-        return getSampleWords().filter { $0.hskLevel == level }
-    }
-}
