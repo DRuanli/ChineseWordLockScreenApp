@@ -11,6 +11,7 @@ import Charts
 
 struct StatsView: View {
     @Environment(\.managedObjectContext) private var viewContext
+    @Environment(\.dismiss) var dismiss
     @StateObject private var viewModel = StatsViewModel()
     @State private var selectedTimeRange: TimeRange = .week
     @State private var selectedStatTab: StatTab = .overview
@@ -76,6 +77,13 @@ struct StatsView: View {
             }
             .navigationTitle("Thống kê")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Button("Đóng") {
+                                    dismiss()
+                                }
+                            }
+                        }
         }
         .onAppear {
             viewModel.loadData()
