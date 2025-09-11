@@ -2,7 +2,7 @@
 //  ChineseWordLockScreenApp.swift
 //  ChineseWordLockScreen
 //
-//  Updated for redesigned interface
+//  Updated for custom tab bar interface
 //
 
 import SwiftUI
@@ -61,6 +61,9 @@ struct ContentView: View {
     }
     
     private func setupAppearance() {
+        // Hide default tab bar
+        UITabBar.appearance().isHidden = true
+        
         // Configure navigation bar appearance
         let appearance = UINavigationBarAppearance()
         appearance.configureWithOpaqueBackground()
@@ -71,13 +74,32 @@ struct ContentView: View {
         UINavigationBar.appearance().standardAppearance = appearance
         UINavigationBar.appearance().scrollEdgeAppearance = appearance
         UINavigationBar.appearance().compactAppearance = appearance
-        
-        // Configure tab bar appearance
-        let tabBarAppearance = UITabBarAppearance()
-        tabBarAppearance.configureWithOpaqueBackground()
-        tabBarAppearance.backgroundColor = UIColor.systemBackground
-        
-        UITabBar.appearance().standardAppearance = tabBarAppearance
-        UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
+    }
+}
+
+// MARK: - Haptic Feedback Helper
+enum HapticFeedback {
+    case light
+    case medium
+    case heavy
+    case success
+    case warning
+    case error
+    
+    func trigger() {
+        switch self {
+        case .light:
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        case .medium:
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        case .heavy:
+            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+        case .success:
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        case .warning:
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        case .error:
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
     }
 }

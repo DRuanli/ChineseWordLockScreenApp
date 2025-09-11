@@ -680,7 +680,7 @@ struct TopicsContent: View {
                 GridItem(.flexible())
             ], spacing: 15) {
                 ForEach(topics, id: \.name) { topic in
-                    TopicCard(topic: topic, wordCount: getWordCount(for: topic))
+                    TopicCardView(topic: topic, wordCount: getWordCount(for: topic))
                 }
             }
             .padding()
@@ -697,7 +697,7 @@ struct TopicsContent: View {
     }
 }
 
-struct TopicCard: View {
+struct TopicCardView: View {
     let topic: TopicsContent.Topic
     let wordCount: Int
     
