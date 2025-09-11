@@ -81,7 +81,6 @@ struct CustomTabBar: View {
             // Practice Button (Center - Larger)
             TabBarButton(
                 icon: "graduationcap.fill",
-                text: "Practice",
                 isSelected: selectedTab == .practice,
                 isCenter: true
             ) {
