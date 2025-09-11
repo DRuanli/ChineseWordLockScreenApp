@@ -2,481 +2,512 @@
 //  StudyDashboardView.swift
 //  ChineseWordLockScreen
 //
-//  Comprehensive study progress and tools dashboard
+//  Enhanced study dashboard with proper database integration and UI alignment
 //
 
 import SwiftUI
+import CoreData
+import Charts
 
 struct StudyDashboardView: View {
     @StateObject private var wordDataManager = WordDataManager.shared
     @StateObject private var authManager = AuthenticationManager.shared
-    @State private var showingFullFlashcard = false
-    @State private var showingQuickStudy = false
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.managedObjectContext) private var viewContext
+    
+    // Study modes
+    @State private var showingFlashcards = false
+    @State private var showingQuiz = false
+    @State private var showingReview = false
+    @State private var showingWordDetail = false
+    @State private var selectedWord: SavedWord?
+    
+    // UI states
+    @State private var selectedTab = 0
+    @State private var refreshing = false
     
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(spacing: 20) {
-                    // Study Stats Header
-                    StudyStatsHeader(
-                        todayCount: wordDataManager.todayWordsCount,
-                        streak: wordDataManager.streak,
-                        totalWords: wordDataManager.savedWords.count,
-                        goal: Int(authManager.currentUser?.dailyGoal ?? 10)
-                    )
-                    
-                    // Quick Actions Grid
-                    QuickActionsGrid(
-                        showingFullFlashcard: $showingFullFlashcard,
-                        showingQuickStudy: $showingQuickStudy
-                    )
-                    
-                    // Review Today Section
-                    if !wordDataManager.wordsForReview.isEmpty {
-                        ReviewTodaySection(words: wordDataManager.wordsForReview)
+            ZStack {
+                // App-consistent background
+                Color(red: 0.95, green: 0.93, blue: 0.88)
+                    .ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // Study Modes Section
+                        StudyModesSection(
+                            showingFlashcards: $showingFlashcards,
+                            showingQuiz: $showingQuiz,
+                            showingReview: $showingReview
+                        )
+                        .padding(.horizontal)
+                        
+                        // Review Schedule
+                        if !wordDataManager.wordsForReview.isEmpty {
+                            ReviewScheduleSection(
+                                words: wordDataManager.wordsForReview,
+                                onSelectWord: { word in
+                                    selectedWord = word
+                                    showingWordDetail = true
+                                }
+                            )
+                            .padding(.horizontal)
+                        }
+                        
+                        
+                        // Recent Activity
+                        RecentActivitySection(
+                            words: Array(wordDataManager.savedWords.prefix(10)),
+                            onSelectWord: { word in
+                                selectedWord = word
+                                showingWordDetail = true
+                            }
+                        )
+                        .padding(.horizontal)
+                        
+                        // Study Tips
+                        StudyTipsCard()
+                            .padding(.horizontal)
+                            .padding(.bottom, 20)
                     }
-                    
-                    // Recent Activity
-                    RecentActivitySection(recentWords: Array(wordDataManager.savedWords.prefix(5)))
                 }
-                .padding()
+                .refreshable {
+                    await refreshData()
+                }
             }
-            .navigationTitle("Học tập")
+            .navigationTitle("Bảng học tập")
             .navigationBarTitleDisplayMode(.large)
-            .background(Color(UIColor.systemGroupedBackground))
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Đóng") {
+                        dismiss()
+                    }
+                }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    NavigationLink(destination: StatsView()) {
+                        Image(systemName: "chart.bar.fill")
+                            .foregroundColor(.primary)
+                    }
+                }
+            }
         }
-        .sheet(isPresented: $showingFullFlashcard) {
+        .sheet(isPresented: $showingFlashcards) {
             FlashcardSessionView()
         }
-        .sheet(isPresented: $showingQuickStudy) {
-            QuickStudyView()
+        .sheet(isPresented: $showingQuiz) {
+            QuizSessionView()
+        }
+        .sheet(isPresented: $showingReview) {
+            SRSReviewView()
+        }
+        .sheet(item: $selectedWord) { word in
+            WordDetailView(word: word)
         }
         .onAppear {
             wordDataManager.refreshData()
         }
     }
-}
-
-// MARK: - Study Stats Header
-struct StudyStatsHeader: View {
-    let todayCount: Int
-    let streak: Int
-    let totalWords: Int
-    let goal: Int
     
-    var progress: Double {
-        min(Double(todayCount) / Double(goal), 1.0)
-    }
-    
-    var body: some View {
-        VStack(spacing: 15) {
-            // Main progress card
-            VStack(spacing: 12) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Hôm nay")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        
-                        Text("\(todayCount) / \(goal)")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                            .foregroundColor(.primary)
-                        
-                        Text("từ đã học")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    Spacer()
-                    
-                    CircularProgressView(progress: progress)
-                        .frame(width: 80, height: 80)
-                }
-                
-                ProgressView(value: progress)
-                    .tint(progress >= 1.0 ? .green : .blue)
-                    .scaleEffect(x: 1, y: 2, anchor: .center)
-                
-                if progress >= 1.0 {
-                    HStack {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                        Text("Hoàn thành mục tiêu hôm nay!")
-                            .font(.caption)
-                            .foregroundColor(.green)
-                    }
-                }
-            }
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 15)
-                    .fill(Color.white)
-                    .shadow(color: .black.opacity(0.05), radius: 5)
-            )
-            
-            // Stats row
-            HStack(spacing: 15) {
-                StatCard(
-                    title: "flame.fill",
-                    value: "Streak",
-                    icon: "\(streak)",
-                    color: .orange
-                )
-                
-                StatCard(
-                    title: "books.vertical.fill",
-                    value: "Tổng từ",
-                    icon: "\(totalWords)",
-                    color: .blue
-                )
-                
-                StatCard(
-                    title: "calendar",
-                    value: "Tuần này",
-                    icon: "45", // Calculate weekly count
-                    color: .purple
-                )
-            }
-        }
+    @MainActor
+    private func refreshData() async {
+        refreshing = true
+        wordDataManager.refreshData()
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        refreshing = false
     }
 }
 
-// MARK: - Circular Progress View
-struct CircularProgressView: View {
-    let progress: Double
+
+
+// MARK: - Stat Item
+struct StatItem: View {
+    let icon: String
+    let value: String
+    let label: String
+    let color: Color
     
     var body: some View {
-        ZStack {
-            Circle()
-                .stroke(Color.gray.opacity(0.2), lineWidth: 8)
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundColor(color)
             
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(
-                    progress >= 1.0 ? Color.green : Color.blue,
-                    style: StrokeStyle(lineWidth: 8, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-                .animation(.easeInOut(duration: 1), value: progress)
-            
-            Text("\(Int(progress * 100))%")
-                .font(.caption)
-                .fontWeight(.semibold)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(value)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                Text(label)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
         }
+        .frame(maxWidth: .infinity)
     }
 }
 
-// MARK: - Quick Actions Grid
-struct QuickActionsGrid: View {
-    @Binding var showingFullFlashcard: Bool
-    @Binding var showingQuickStudy: Bool
+// MARK: - Study Modes Section
+struct StudyModesSection: View {
+    @Binding var showingFlashcards: Bool
+    @Binding var showingQuiz: Bool
+    @Binding var showingReview: Bool
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Công cụ học tập")
+            Text("Chế độ học")
                 .font(.headline)
-                .fontWeight(.semibold)
+                .foregroundColor(.primary)
             
-            LazyVGrid(columns: [
-                GridItem(.flexible()),
-                GridItem(.flexible())
-            ], spacing: 15) {
-                ActionCard(
-                    icon: "timer",
-                    title: "Học nhanh",
-                    subtitle: "5 phút tập trung",
-                    color: .blue
-                ) {
-                    showingQuickStudy = true
-                }
-                
-                ActionCard(
-                    icon: "rectangle.stack",
-                    title: "Flashcards",
-                    subtitle: "Ôn tập từ đã lưu",
-                    color: .green
-                ) {
-                    showingFullFlashcard = true
-                }
-                
-                NavigationLink(destination: LibraryView()) {
-                    ActionCard(
-                        icon: "books.vertical",
-                        title: "Thư viện",
-                        subtitle: "Quản lý từ vựng",
-                        color: .purple
-                    ) { }
-                }
-                
-                ActionCard(
-                    icon: "brain.head.profile",
-                    title: "SRS Quiz",
-                    subtitle: "Kiểm tra trí nhớ",
-                    color: .orange
-                ) {
-                    // SRS quiz action - could open another study mode
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    StudyModeCard(
+                        icon: "rectangle.stack.fill",
+                        title: "Flashcards",
+                        subtitle: "Lật thẻ học từ",
+                        color: .blue,
+                        badge: nil
+                    ) {
+                        HapticFeedback.light.trigger()
+                        showingFlashcards = true
+                    }
+                    
+                    StudyModeCard(
+                        icon: "questionmark.circle.fill",
+                        title: "Quiz",
+                        subtitle: "Kiểm tra nhanh",
+                        color: .green,
+                        badge: "Mới"
+                    ) {
+                        HapticFeedback.light.trigger()
+                        showingQuiz = true
+                    }
+                    
+                    StudyModeCard(
+                        icon: "brain.head.profile",
+                        title: "SRS Review",
+                        subtitle: "Ôn tập thông minh",
+                        color: .orange,
+                        badge: WordDataManager.shared.wordsForReview.isEmpty ? nil : "\(WordDataManager.shared.wordsForReview.count)"
+                    ) {
+                        HapticFeedback.light.trigger()
+                        showingReview = true
+                    }
+                    
+                    StudyModeCard(
+                        icon: "chart.line.uptrend.xyaxis",
+                        title: "Thống kê",
+                        subtitle: "Xem tiến độ",
+                        color: .purple,
+                        badge: nil
+                    ) {
+                        HapticFeedback.light.trigger()
+                        // Navigate to stats
+                    }
                 }
             }
         }
     }
 }
 
-// MARK: - Action Card
-struct ActionCard: View {
+// MARK: - Study Mode Card
+struct StudyModeCard: View {
     let icon: String
     let title: String
     let subtitle: String
     let color: Color
+    let badge: String?
     let action: () -> Void
     
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.title)
-                    .foregroundColor(color)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: icon)
+                        .font(.title2)
+                        .foregroundColor(color)
+                    
+                    Spacer()
+                    
+                    if let badge = badge {
+                        Text(badge)
+                            .font(.caption.bold())
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                Capsule()
+                                    .fill(Color.red)
+                            )
+                    }
+                }
                 
-                VStack(spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(title)
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
+                        .font(.subheadline.bold())
                         .foregroundColor(.primary)
                     
                     Text(subtitle)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
                 }
+                
+                Spacer()
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 100)
+            .padding()
+            .frame(width: 140, height: 120)
             .background(
-                RoundedRectangle(cornerRadius: 15)
+                RoundedRectangle(cornerRadius: 16)
                     .fill(Color.white)
-                    .shadow(color: .black.opacity(0.05), radius: 5)
+                    .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
             )
         }
         .buttonStyle(PlainButtonStyle())
     }
 }
 
-// MARK: - Review Today Section
-struct ReviewTodaySection: View {
+// MARK: - Review Schedule Section
+struct ReviewScheduleSection: View {
     let words: [SavedWord]
+    let onSelectWord: (SavedWord) -> Void
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Cần ôn hôm nay")
+                Text("Lịch ôn tập hôm nay")
                     .font(.headline)
-                    .fontWeight(.semibold)
                 
                 Spacer()
                 
                 Text("\(words.count) từ")
                     .font(.caption)
-                    .foregroundColor(.orange)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.orange.opacity(0.1))
-                    .cornerRadius(8)
+                    .foregroundColor(.secondary)
             }
             
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(words.prefix(5), id: \.self) { word in
-                        ReviewWordCard(word: word)
-                    }
-                    
-                    if words.count > 5 {
-                        NavigationLink(destination: LibraryView()) {
-                            VStack {
-                                Text("+\(words.count - 5)")
-                                    .font(.title3)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.blue)
-                                
-                                Text("xem thêm")
-                                    .font(.caption)
-                                    .foregroundColor(.blue)
-                            }
-                            .frame(width: 80, height: 80)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color.blue.opacity(0.1))
-                            )
-                        }
-                    }
+            VStack(spacing: 8) {
+                ForEach(words.prefix(5)) { word in
+                    ReviewWordRow(word: word, onTap: {
+                        onSelectWord(word)
+                    })
                 }
-                .padding(.horizontal, 1)
+                
+                if words.count > 5 {
+                    Button(action: {
+                        // Show all review words
+                    }) {
+                        Text("Xem tất cả (\(words.count - 5) từ khác)")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                    }
+                    .padding(.top, 4)
+                }
             }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.white)
+                    .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
+            )
         }
     }
 }
 
-// MARK: - Review Word Card
-struct ReviewWordCard: View {
+// MARK: - Review Word Row
+struct ReviewWordRow: View {
     let word: SavedWord
+    let onTap: () -> Void
     
     var body: some View {
-        VStack(spacing: 4) {
-            Text(word.hanzi ?? "")
-                .font(.title2)
-                .fontWeight(.medium)
-            
-            Text(word.pinyin ?? "")
-                .font(.caption)
-                .foregroundColor(.secondary)
+        Button(action: onTap) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(word.hanzi ?? "")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    
+                    Text(word.pinyin ?? "")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                HStack(spacing: 4) {
+                    if word.srsLevel > 0 {
+                        Label("\(word.srsLevel)", systemImage: "brain")
+                            .font(.caption2)
+                            .foregroundColor(.orange)
+                    }
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 4)
         }
-        .frame(width: 80, height: 80)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.white)
-                .shadow(color: .black.opacity(0.05), radius: 3)
-        )
+        .buttonStyle(PlainButtonStyle())
     }
 }
 
 // MARK: - Recent Activity Section
 struct RecentActivitySection: View {
-    let recentWords: [SavedWord]
+    let words: [SavedWord]
+    let onSelectWord: (SavedWord) -> Void
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Hoạt động gần đây")
-                .font(.headline)
-                .fontWeight(.semibold)
-            
-            if recentWords.isEmpty {
-                VStack(spacing: 10) {
-                    Image(systemName: "book.closed")
-                        .font(.largeTitle)
-                        .foregroundColor(.gray.opacity(0.5))
-                    
-                    Text("Chưa có từ vựng nào")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
+            HStack {
+                Text("Hoạt động gần đây")
+                    .font(.headline)
+                
+                Spacer()
+                
+                NavigationLink(destination: LibraryView()) {
+                    Text("Xem tất cả")
+                        .font(.caption)
+                        .foregroundColor(.blue)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 40)
-                .background(
-                    RoundedRectangle(cornerRadius: 15)
-                        .fill(Color.white)
-                        .shadow(color: .black.opacity(0.05), radius: 5)
-                )
-            } else {
-                VStack(spacing: 8) {
-                    ForEach(recentWords, id: \.self) { word in
-                        RecentActivityRow(word: word)
+            }
+            
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(words) { word in
+                        RecentWordCard(word: word) {
+                            onSelectWord(word)
+                        }
                     }
                 }
-                .padding()
-                .background(
-                    RoundedRectangle(cornerRadius: 15)
-                        .fill(Color.white)
-                        .shadow(color: .black.opacity(0.05), radius: 5)
-                )
             }
         }
     }
 }
 
-// MARK: - Recent Activity Row
-struct RecentActivityRow: View {
+// MARK: - Recent Word Card
+struct RecentWordCard: View {
     let word: SavedWord
+    let onTap: () -> Void
     
     var body: some View {
-        HStack {
-            Text(word.hanzi ?? "")
-                .font(.title3)
-                .fontWeight(.medium)
-                .frame(width: 40)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(word.pinyin ?? "")
-                    .font(.subheadline)
+        Button(action: onTap) {
+            VStack(spacing: 8) {
+                Text(word.hanzi ?? "")
+                    .font(.system(size: 28, weight: .bold))
                     .foregroundColor(.primary)
                 
-                Text(word.meaning ?? "")
+                Text(word.pinyin ?? "")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                
+                if word.isFavorite {
+                    Image(systemName: "heart.fill")
+                        .font(.caption2)
+                        .foregroundColor(.red)
+                }
             }
-            
-            Spacer()
-            
-            if let date = word.savedDate {
-                Text(timeAgoString(from: date))
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
+            .frame(width: 80, height: 100)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.white)
+                    .shadow(color: .black.opacity(0.05), radius: 3, x: 0, y: 2)
+            )
         }
-    }
-    
-    private func timeAgoString(from date: Date) -> String {
-        let formatter = RelativeDateTimeFormatter()
-        return formatter.localizedString(for: date, relativeTo: Date())
+        .buttonStyle(PlainButtonStyle())
     }
 }
 
-// MARK: - Flashcard Session View
+// MARK: - Study Tips Card
+struct StudyTipsCard: View {
+    let tips = [
+        "Ôn tập từ vựng vào buổi sáng để ghi nhớ tốt hơn",
+        "Sử dụng flashcard 5-10 phút mỗi ngày",
+        "Viết câu ví dụ với từ mới học",
+        "Nghe phát âm nhiều lần để nhớ lâu hơn",
+        "Ôn lại từ đã học sau 1, 3, 7 ngày"
+    ]
+    
+    @State private var currentTip = 0
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "lightbulb.fill")
+                    .font(.title3)
+                    .foregroundColor(.yellow)
+                
+                Text("Mẹo học tập")
+                    .font(.headline)
+            }
+            
+            Text(tips[currentTip])
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            
+            Button(action: {
+                currentTip = (currentTip + 1) % tips.count
+                HapticFeedback.light.trigger()
+            }) {
+                Text("Mẹo khác →")
+                    .font(.caption)
+                    .foregroundColor(.blue)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.yellow.opacity(0.1), Color.orange.opacity(0.05)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+    }
+}
+
+// MARK: - Supporting Views
+
 struct FlashcardSessionView: View {
-    @Environment(\.dismiss) var dismiss
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var wordDataManager = WordDataManager.shared
     @State private var currentIndex = 0
     @State private var showingAnswer = false
     
     var body: some View {
         NavigationView {
-            VStack(spacing: 30) {
+            ZStack {
+                Color(red: 0.95, green: 0.93, blue: 0.88)
+                    .ignoresSafeArea()
+                
                 if !wordDataManager.savedWords.isEmpty {
-                    VStack(spacing: 40) {
-                        // Progress
-                        Text("\(currentIndex + 1) / \(wordDataManager.savedWords.count)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                    VStack(spacing: 20) {
+                        // Progress indicator
+                        ProgressView(value: Double(currentIndex + 1), total: Double(wordDataManager.savedWords.count))
+                            .padding(.horizontal)
                         
-                        // Card
-                        VStack(spacing: 20) {
-                            Text(wordDataManager.savedWords[currentIndex].hanzi ?? "")
-                                .font(.system(size: 80))
-                                .fontWeight(.medium)
-                            
-                            if showingAnswer {
-                                VStack(spacing: 10) {
-                                    Text(wordDataManager.savedWords[currentIndex].pinyin ?? "")
-                                        .font(.title2)
-                                        .foregroundColor(.secondary)
-                                    
-                                    Text(wordDataManager.savedWords[currentIndex].meaning ?? "")
-                                        .font(.title3)
-                                        .multilineTextAlignment(.center)
-                                }
-                                .transition(.opacity.combined(with: .scale))
-                            }
-                        }
-                        .frame(maxHeight: .infinity)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation {
-                                showingAnswer.toggle()
-                            }
-                        }
+                        // Flashcard
+                        FlashcardView(
+                            word: wordDataManager.savedWords[currentIndex],
+                            showingAnswer: $showingAnswer
+                        )
+                        .padding()
                         
                         // Controls
                         HStack(spacing: 30) {
                             Button(action: previousCard) {
                                 Image(systemName: "chevron.left.circle.fill")
                                     .font(.largeTitle)
-                                    .foregroundColor(.gray)
+                                    .foregroundColor(.blue)
                             }
                             .disabled(currentIndex == 0)
                             
-                            Button(action: {
-                                withAnimation {
-                                    showingAnswer.toggle()
-                                }
-                            }) {
+                            Button(action: { showingAnswer.toggle() }) {
                                 Text(showingAnswer ? "Ẩn" : "Hiện đáp án")
                                     .fontWeight(.semibold)
                                     .padding(.horizontal, 20)
@@ -495,24 +526,13 @@ struct FlashcardSessionView: View {
                         }
                     }
                 } else {
-                    VStack(spacing: 20) {
-                        Image(systemName: "rectangle.stack")
-                            .font(.system(size: 80))
-                            .foregroundColor(.gray)
-                        
-                        Text("Chưa có từ vựng để ôn tập")
-                            .font(.title3)
-                            .foregroundColor(.secondary)
-                        
-                        Text("Hãy lưu một số từ vựng để bắt đầu flashcard")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxHeight: .infinity)
+                    EmptyStateView(
+                        icon: "rectangle.stack",
+                        title: "Chưa có từ vựng",
+                        message: "Hãy lưu một số từ vựng để bắt đầu flashcard"
+                    )
                 }
             }
-            .padding()
             .navigationTitle("Flashcards")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -538,6 +558,172 @@ struct FlashcardSessionView: View {
     }
 }
 
+struct FlashcardView: View {
+    let word: SavedWord
+    @Binding var showingAnswer: Bool
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            Text(word.hanzi ?? "")
+                .font(.system(size: 60, weight: .bold))
+                .foregroundColor(.primary)
+            
+            if showingAnswer {
+                VStack(spacing: 12) {
+                    Text(word.pinyin ?? "")
+                        .font(.title2)
+                        .foregroundColor(.secondary)
+                    
+                    Text(word.meaning ?? "")
+                        .font(.title3)
+                        .foregroundColor(.primary)
+                        .multilineTextAlignment(.center)
+                    
+                    if let example = word.example {
+                        Text(example)
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                            .italic()
+                            .padding(.top, 8)
+                    }
+                }
+                .transition(.opacity.combined(with: .scale))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color.white)
+                .shadow(color: .black.opacity(0.1), radius: 10)
+        )
+    }
+}
+
+struct QuizSessionView: View {
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color(red: 0.95, green: 0.93, blue: 0.88)
+                    .ignoresSafeArea()
+                
+                Text("Quiz feature coming soon!")
+                    .font(.title2)
+                    .foregroundColor(.secondary)
+            }
+            .navigationTitle("Quiz")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Đóng") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+struct SRSReviewView: View {
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var wordDataManager = WordDataManager.shared
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color(red: 0.95, green: 0.93, blue: 0.88)
+                    .ignoresSafeArea()
+                
+                if !wordDataManager.wordsForReview.isEmpty {
+                    VStack {
+                        Text("Review \(wordDataManager.wordsForReview.count) words")
+                            .font(.title2)
+                        // Add SRS review logic here
+                    }
+                } else {
+                    EmptyStateView(
+                        icon: "brain.head.profile",
+                        title: "Không có từ cần ôn",
+                        message: "Tất cả từ vựng đã được ôn tập"
+                    )
+                }
+            }
+            .navigationTitle("SRS Review")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Đóng") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+struct WordDetailView: View {
+    let word: SavedWord
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 20) {
+                    Text(word.hanzi ?? "")
+                        .font(.system(size: 60, weight: .bold))
+                    
+                    Text(word.pinyin ?? "")
+                        .font(.title2)
+                        .foregroundColor(.secondary)
+                    
+                    Text(word.meaning ?? "")
+                        .font(.title3)
+                    
+                    if let example = word.example {
+                        Text(example)
+                            .font(.body)
+                            .padding()
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(10)
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle("Chi tiết từ vựng")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Đóng") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+struct EmptyStateView: View {
+    let icon: String
+    let title: String
+    let message: String
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: icon)
+                .font(.system(size: 60))
+                .foregroundColor(.gray)
+            
+            Text(title)
+                .font(.title3.bold())
+                .foregroundColor(.primary)
+            
+            Text(message)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding()
+    }
+}
+
+// MARK: - Preview
 #Preview {
     StudyDashboardView()
+        .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
 }
