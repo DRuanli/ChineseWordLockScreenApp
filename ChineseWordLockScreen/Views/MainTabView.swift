@@ -2,7 +2,7 @@
 //  MainTabView.swift
 //  ChineseWordLockScreen
 //
-//  Updated with minimalist home and new study dashboard
+//  Updated for the redesigned home view
 //
 
 import SwiftUI
@@ -13,111 +13,52 @@ struct MainTabView: View {
     @State private var selectedTab = 0
     
     var body: some View {
-        ZStack(alignment: .bottom) {
-            TabView(selection: $selectedTab) {
-                HomeView()
-                    .tag(0)
-                
-                StudyDashboardView()
-                    .tag(1)
-                
-                LibraryView()
-                    .tag(2)
-                
-                StatsView()
-                    .tag(3)
-                
-                ProfileSettingsView()
-                    .tag(4)
-            }
+        TabView(selection: $selectedTab) {
+            HomeView()
+                .tabItem {
+                    Label("Home", systemImage: "house.fill")
+                }
+                .tag(0)
             
-            // Custom Tab Bar
-            CustomTabBar(selectedTab: $selectedTab)
+            StudyDashboardView()
+                .tabItem {
+                    Label("Progress", systemImage: "chart.line.uptrend.xyaxis")
+                }
+                .tag(1)
+            
+            LibraryView()
+                .tabItem {
+                    Label("Library", systemImage: "books.vertical.fill")
+                }
+                .tag(2)
+            
+            StatsView()
+                .tabItem {
+                    Label("Stats", systemImage: "chart.bar.fill")
+                }
+                .tag(3)
+            
+            ProfileSettingsView()
+                .tabItem {
+                    Label("Settings", systemImage: "person.circle.fill")
+                }
+                .tag(4)
         }
         .onAppear {
             notificationManager.requestAuthorization()
-            UITabBar.appearance().isHidden = true
+            
+            // Configure tab bar appearance
+            let appearance = UITabBarAppearance()
+            appearance.configureWithOpaqueBackground()
+            appearance.backgroundColor = UIColor.systemBackground
+            
+            UITabBar.appearance().standardAppearance = appearance
+            UITabBar.appearance().scrollEdgeAppearance = appearance
         }
     }
 }
 
-struct CustomTabBar: View {
-    @Binding var selectedTab: Int
-    
-    var body: some View {
-        HStack(spacing: 0) {
-            TabBarButton(
-                icon: "character.book.closed.fill",
-                title: "Học",
-                isSelected: selectedTab == 0,
-                action: { selectedTab = 0 }
-            )
-            
-            TabBarButton(
-                icon: "chart.line.uptrend.xyaxis",
-                title: "Tiến độ",
-                isSelected: selectedTab == 1,
-                action: { selectedTab = 1 }
-            )
-            
-            TabBarButton(
-                icon: "books.vertical.fill",
-                title: "Thư viện",
-                isSelected: selectedTab == 2,
-                action: { selectedTab = 2 }
-            )
-            
-            TabBarButton(
-                icon: "chart.bar.fill",
-                title: "Thống kê",
-                isSelected: selectedTab == 3,
-                action: { selectedTab = 3 }
-            )
-            
-            TabBarButton(
-                icon: "person.circle.fill",
-                title: "Cài đặt",
-                isSelected: selectedTab == 4,
-                action: { selectedTab = 4 }
-            )
-        }
-        .padding(.horizontal)
-        .padding(.top, 10)
-        .padding(.bottom, 20)
-        .background(
-            RoundedRectangle(cornerRadius: 25)
-                .fill(Color.white)
-                .shadow(color: Color.black.opacity(0.1), radius: 10, y: -5)
-                .ignoresSafeArea(edges: .bottom)
-        )
-    }
-}
-
-struct TabBarButton: View {
-    let icon: String
-    let title: String
-    let isSelected: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 20))
-                    .foregroundColor(isSelected ? .blue : .gray)
-                    .scaleEffect(isSelected ? 1.1 : 1.0)
-                
-                Text(title)
-                    .font(.caption2)
-                    .foregroundColor(isSelected ? .blue : .gray)
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
-    }
-}
-
-// Keep the existing ProfileSettingsView but simplify it
+// Keep the ProfileSettingsView exactly as it was
 struct ProfileSettingsView: View {
     @StateObject private var authManager = AuthenticationManager.shared
     @StateObject private var notificationManager = NotificationManager.shared
