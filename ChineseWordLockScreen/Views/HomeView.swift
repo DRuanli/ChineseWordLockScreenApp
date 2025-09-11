@@ -2,7 +2,7 @@
 //  HomeView.swift
 //  ChineseWordLockScreen
 //
-//  Minimalist design focused on vocabulary learning
+//  Clean minimalist design inspired by language learning apps
 //
 
 import SwiftUI
@@ -14,305 +14,122 @@ struct HomeView: View {
     @StateObject private var authManager = AuthenticationManager.shared
     
     @State private var showingExample = false
-    @State private var showingPersonalNote = false
-    @State private var personalNote = ""
-    @State private var cardOffset: CGFloat = 0
-    @State private var isAnimating = false
+    @State private var showingInfo = false
+    @State private var showingShare = false
     @State private var audioPlaying = false
-    @State private var slowAudioMode = false
     
     var body: some View {
-        NavigationView {
+        GeometryReader { geometry in
             ZStack {
-                // Clean background
-                Color(hex: "F8F9FA")
+                // Clean white background
+                Color.white
                     .ignoresSafeArea()
                 
                 VStack(spacing: 0) {
-                    // Minimal header - just level indicator
-                    HStack {
-                        Text("HSK\(authManager.currentUser?.preferredHSKLevel ?? 5)")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.blue.opacity(0.1))
-                            .foregroundColor(.blue)
-                            .cornerRadius(12)
+                    // Custom Status Bar
+                    CustomStatusBar()
+                        .padding(.top, 8)
+                    
+                    // Progress Section
+                    ProgressSection(
+                        current: wordDataManager.todayWordsCount,
+                        total: Int(authManager.currentUser?.dailyGoal ?? 10)
+                    )
+                    .padding(.horizontal, 20)
+                    .padding(.top, 20)
+                    
+                    // Main Content Area
+                    VStack(spacing: 32) {
+                        Spacer()
+                        
+                        // Chinese Character - Main Focus
+                        Text(viewModel.currentWord.hanzi)
+                            .font(.system(size: 64, weight: .bold, design: .default))
+                            .foregroundColor(.black)
+                        
+                        // Pinyin with Audio Button
+                        HStack(spacing: 12) {
+                            Text("[\(viewModel.currentWord.pinyin)]")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(.secondary)
+                            
+                            Button(action: playAudio) {
+                                Image(systemName: audioPlaying ? "speaker.wave.2.fill" : "speaker.wave.2")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(.secondary)
+                                    .scaleEffect(audioPlaying ? 1.2 : 1.0)
+                                    .animation(.easeInOut(duration: 0.2), value: audioPlaying)
+                            }
+                        }
+                        
+                        // Definition
+                        VStack(spacing: 16) {
+                            Text("(n.) \(getVietnameseMeaning(viewModel.currentWord.meaning))")
+                                .font(.system(size: 17, weight: .regular))
+                                .foregroundColor(.black)
+                                .multilineTextAlignment(.center)
+                                .lineLimit(nil)
+                                .fixedSize(horizontal: false, vertical: true)
+                            
+                            // Example sentence - expandable
+                            if showingExample {
+                                if let example = viewModel.currentWord.example {
+                                    Text(example)
+                                        .font(.system(size: 15, weight: .regular))
+                                        .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.center)
+                                        .lineLimit(nil)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .transition(.opacity.combined(with: .move(edge: .top)))
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 40)
                         
                         Spacer()
                         
-                        // Quick progress indicator
-                        if wordDataManager.todayWordsCount > 0 {
-                            Text("\(wordDataManager.todayWordsCount)")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color.green.opacity(0.1))
-                                .foregroundColor(.green)
-                                .cornerRadius(8)
-                        }
+                        // Action Buttons Row
+                        ActionButtonsRow(
+                            showingExample: $showingExample,
+                            showingInfo: $showingInfo,
+                            showingShare: $showingShare,
+                            isSaved: viewModel.isSaved,
+                            onToggleSave: viewModel.toggleSave,
+                            onInfo: { showingInfo = true },
+                            onShare: { showingShare = true }
+                        )
+                        .padding(.horizontal, 60)
+                        
+                        Spacer()
                     }
-                    .padding(.horizontal)
-                    .padding(.top, 8)
                     
-                    // Main word card - takes up most of the screen
-                    MinimalistWordCard(
-                        word: viewModel.currentWord,
-                        showingExample: $showingExample,
-                        showingPersonalNote: $showingPersonalNote,
-                        personalNote: $personalNote,
-                        cardOffset: $cardOffset,
-                        isAnimating: $isAnimating,
-                        audioPlaying: $audioPlaying,
-                        slowAudioMode: $slowAudioMode,
-                        viewModel: viewModel
-                    )
+                    // Bottom Navigation
+                    BottomNavigationBar(onNext: {
+                        viewModel.getNextWord()
+                        resetStates()
+                    })
                     .padding(.horizontal, 20)
-                    .padding(.vertical, 20)
-                    
-                    // Bottom minimal controls
-                    HStack(spacing: 40) {
-                        Button(action: previousWord) {
-                            Image(systemName: "chevron.left")
-                                .font(.title2)
-                                .foregroundColor(.gray.opacity(0.6))
-                        }
-                        
-                        Button(action: nextWord) {
-                            Image(systemName: "chevron.right")
-                                .font(.title2)
-                                .foregroundColor(.blue)
-                        }
-                    }
-                    .padding(.bottom, 30)
+                    .padding(.bottom, 34) // Safe area bottom
                 }
             }
-            .navigationBarHidden(true)
-            .onAppear {
-                wordDataManager.refreshData()
-            }
-            .gesture(
-                DragGesture()
-                    .onChanged { value in
-                        cardOffset = value.translation.width / 3
-                    }
-                    .onEnded { value in
-                        if abs(value.translation.width) > 100 {
-                            if value.translation.width > 0 {
-                                previousWord()
-                            } else {
-                                nextWord()
-                            }
-                        }
-                        withAnimation(.spring()) {
-                            cardOffset = 0
-                        }
-                    }
-            )
+        }
+        .onAppear {
+            wordDataManager.refreshData()
+        }
+        .sheet(isPresented: $showingInfo) {
+            WordInfoSheet(word: viewModel.currentWord)
+        }
+        .sheet(isPresented: $showingShare) {
+            ShareSheet(word: viewModel.currentWord)
         }
     }
     
-    private func nextWord() {
-        withAnimation(.easeInOut(duration: 0.3)) {
-            isAnimating = true
-        }
-        viewModel.getNextWord()
-        resetStates()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            isAnimating = false
-        }
-    }
-    
-    private func previousWord() {
-        viewModel.getPreviousWord()
-        resetStates()
-    }
-    
-    private func resetStates() {
-        showingExample = false
-        showingPersonalNote = false
-        personalNote = ""
-    }
-}
-
-// MARK: - Minimalist Word Card
-struct MinimalistWordCard: View {
-    let word: HSKWord
-    @Binding var showingExample: Bool
-    @Binding var showingPersonalNote: Bool
-    @Binding var personalNote: String
-    @Binding var cardOffset: CGFloat
-    @Binding var isAnimating: Bool
-    @Binding var audioPlaying: Bool
-    @Binding var slowAudioMode: Bool
-    let viewModel: HomeViewModel
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            // Main content area
-            VStack(spacing: 25) {
-                Spacer()
-                
-                // Chinese Character - dominant element
-                Text(word.hanzi)
-                    .font(.custom("Noto Sans SC", size: min(UIScreen.main.bounds.width * 0.4, 160)))
-                    .fontWeight(.medium)
-                    .foregroundColor(.primary)
-                    .minimumScaleFactor(0.7)
-                    .scaleEffect(isAnimating ? 1.05 : 1.0)
-                    .opacity(isAnimating ? 0.8 : 1.0)
-                    .animation(.easeInOut(duration: 0.3), value: isAnimating)
-                
-                // Pinyin with tone colors
-                HStack(spacing: 0) {
-                    ForEach(Array(getPinyinWithTones(word.pinyin).enumerated()), id: \.offset) { index, syllable in
-                        Text(syllable.text)
-                            .font(.system(size: 28))
-                            .foregroundColor(syllable.toneColor)
-                    }
-                }
-                
-                // Vietnamese meaning - primary
-                Text(getVietnameseMeaning(word.meaning))
-                    .font(.system(size: 24, weight: .medium))
-                    .foregroundColor(.primary)
-                    .multilineTextAlignment(.center)
-                
-                // English meaning - secondary
-                Text(word.meaning)
-                    .font(.system(size: 16))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                
-                Spacer()
-                
-                // Example sentence (expandable)
-                if showingExample {
-                    VStack(spacing: 8) {
-                        Divider()
-                            .padding(.horizontal, 60)
-                        
-                        if let example = word.example {
-                            VStack(spacing: 6) {
-                                Text(example)
-                                    .font(.system(size: 18))
-                                    .foregroundColor(.primary)
-                                
-                                Text(getVietnameseTranslation(example))
-                                    .font(.system(size: 14))
-                                    .foregroundColor(.blue)
-                                    .italic()
-                            }
-                            .multilineTextAlignment(.center)
-                        }
-                    }
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    .padding(.bottom, 20)
-                }
-                
-                // Personal notes (expandable)
-                if showingPersonalNote {
-                    VStack(spacing: 8) {
-                        Text("Ghi chú:")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        
-                        TextField("Thêm ghi chú...", text: $personalNote)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .font(.system(size: 14))
-                    }
-                    .padding(.horizontal, 20)
-                    .transition(.opacity)
-                }
-            }
-            
-            // Action buttons - minimal and clean
-            HStack(spacing: 30) {
-                // Audio button
-                Button(action: playAudio) {
-                    VStack(spacing: 4) {
-                        Image(systemName: audioPlaying ? "speaker.wave.3.fill" : "speaker.wave.2.fill")
-                            .font(.title2)
-                            .foregroundColor(.blue)
-                            .scaleEffect(audioPlaying ? 1.2 : 1.0)
-                        
-                        if slowAudioMode {
-                            Text("Chậm")
-                                .font(.caption2)
-                                .foregroundColor(.blue)
-                        }
-                    }
-                }
-                .onLongPressGesture {
-                    slowAudioMode = true
-                    playAudio()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                        slowAudioMode = false
-                    }
-                }
-                
-                // Example toggle
-                Button(action: {
-                    withAnimation(.spring()) {
-                        showingExample.toggle()
-                        if showingExample {
-                            showingPersonalNote = false
-                        }
-                    }
-                }) {
-                    Image(systemName: showingExample ? "text.badge.minus" : "text.badge.plus")
-                        .font(.title2)
-                        .foregroundColor(showingExample ? .orange : .green)
-                }
-                
-                // Save/heart button
-                Button(action: {
-                    viewModel.toggleSave()
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }) {
-                    Image(systemName: viewModel.isSaved ? "heart.fill" : "heart")
-                        .font(.title2)
-                        .foregroundColor(viewModel.isSaved ? .red : .gray)
-                }
-                
-                // Notes toggle
-                Button(action: {
-                    withAnimation(.spring()) {
-                        showingPersonalNote.toggle()
-                        if showingPersonalNote {
-                            showingExample = false
-                        }
-                    }
-                }) {
-                    Image(systemName: showingPersonalNote ? "note.text.badge.plus" : "note.text")
-                        .font(.title2)
-                        .foregroundColor(showingPersonalNote ? .orange : .gray)
-                }
-            }
-            .padding(.bottom, 20)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 30)
-                .fill(Color.white)
-                .shadow(color: .black.opacity(0.05), radius: 20, x: 0, y: 10)
-        )
-        .offset(x: cardOffset)
-    }
-    
-    // Helper functions
     private func playAudio() {
         withAnimation(.easeInOut(duration: 0.2)) {
             audioPlaying = true
         }
         
-        if slowAudioMode {
-            viewModel.speakWordSlow()
-        } else {
-            viewModel.speakWord()
-        }
+        viewModel.speakWord()
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
             audioPlaying = false
@@ -320,86 +137,313 @@ struct MinimalistWordCard: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
     
-    private func getPinyinWithTones(_ pinyin: String) -> [(text: String, toneColor: Color)] {
-        var result: [(String, Color)] = []
-        let syllables = pinyin.split(separator: " ")
-        
-        for syllable in syllables {
-            let tone = detectTone(String(syllable))
-            result.append((String(syllable), getToneColor(tone)))
-        }
-        
-        return result
+    private func resetStates() {
+        showingExample = false
     }
     
-    private func detectTone(_ syllable: String) -> Int {
-        let tone1 = ["ā", "ē", "ī", "ō", "ū", "ǖ"]
-        let tone2 = ["á", "é", "í", "ó", "ú", "ǘ"]
-        let tone3 = ["ǎ", "ě", "ǐ", "ǒ", "ǔ", "ǚ"]
-        let tone4 = ["à", "è", "ì", "ò", "ù", "ǜ"]
-        
-        for char in syllable {
-            if tone1.contains(where: { String(char).contains($0) }) { return 1 }
-            if tone2.contains(where: { String(char).contains($0) }) { return 2 }
-            if tone3.contains(where: { String(char).contains($0) }) { return 3 }
-            if tone4.contains(where: { String(char).contains($0) }) { return 4 }
-        }
-        return 0
-    }
-    
-    private func getToneColor(_ tone: Int) -> Color {
-        switch tone {
-        case 1: return .green
-        case 2: return .yellow
-        case 3: return .orange
-        case 4: return .red
-        default: return .primary
-        }
-    }
-    
-    private func getVietnameseMeaning(_ meaning: String) -> String {
+    private func getVietnameseMeaning(_ english: String) -> String {
         let translations: [String: String] = [
-            "wide": "rộng",
-            "method": "phương pháp",
-            "help": "giúp đỡ",
-            "competition": "cuộc thi",
-            "express": "biểu đạt",
-            "change": "thay đổi",
-            "participate": "tham gia",
-            "be late": "trễ",
-            "plan": "kế hoạch",
-            "worry": "lo lắng"
+            "wide": "rộng", "method": "phương pháp", "help": "giúp đỡ",
+            "competition": "cuộc thi", "express": "biểu đạt", "change": "thay đổi",
+            "participate": "tham gia", "be late": "trễ", "plan": "kế hoạch",
+            "worry": "lo lắng", "learn": "học", "study": "học tập",
+            "good": "tốt", "beautiful": "đẹp", "big": "lớn", "small": "nhỏ"
         ]
         
         for (eng, viet) in translations {
-            if meaning.lowercased().contains(eng) {
+            if english.lowercased().contains(eng) {
                 return viet
             }
         }
-        return meaning
-    }
-    
-    private func getVietnameseTranslation(_ chinese: String) -> String {
-        return "Căn phòng này rất rộng"
+        return english
     }
 }
 
-// Keep the Color extension
-extension Color {
-    init(hex: String) {
-        let scanner = Scanner(string: hex)
-        scanner.currentIndex = scanner.string.startIndex
-        var rgbValue: UInt64 = 0
-        scanner.scanHexInt64(&rgbValue)
-        
-        let r = (rgbValue & 0xff0000) >> 16
-        let g = (rgbValue & 0xff00) >> 8
-        let b = rgbValue & 0xff
-        
-        self.init(
-            red: Double(r) / 0xff,
-            green: Double(g) / 0xff,
-            blue: Double(b) / 0xff
-        )
+// MARK: - Custom Status Bar
+struct CustomStatusBar: View {
+    var body: some View {
+        HStack {
+            // Time
+            Text("08:15")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(.black)
+            
+            Spacer()
+            
+            // Signal and Battery Icons
+            HStack(spacing: 6) {
+                // Signal dots
+                HStack(spacing: 2) {
+                    Circle().fill(Color.black).frame(width: 4, height: 4)
+                    Circle().fill(Color.black).frame(width: 4, height: 4)
+                    Circle().fill(Color.black).frame(width: 4, height: 4)
+                }
+                
+                // WiFi icon
+                Image(systemName: "wifi")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(.black)
+                
+                // Battery
+                Text("34")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.black)
+            }
+        }
+        .padding(.horizontal, 24)
     }
+}
+
+// MARK: - Progress Section
+struct ProgressSection: View {
+    let current: Int
+    let total: Int
+    
+    private var progress: Double {
+        guard total > 0 else { return 0 }
+        return min(Double(current) / Double(total), 1.0)
+    }
+    
+    var body: some View {
+        HStack {
+            // Bookmark icon
+            Image(systemName: "bookmark")
+                .font(.system(size: 16))
+                .foregroundColor(.black)
+            
+            // Progress indicator
+            Text("\(current)/\(total)")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundColor(.black)
+            
+            // Progress bar
+            ProgressView(value: progress)
+                .progressViewStyle(LinearProgressViewStyle(tint: .black))
+                .scaleEffect(x: 1, y: 0.8)
+                .frame(height: 4)
+            
+            Spacer()
+            
+            // Chart icon
+            Image(systemName: "chart.bar.fill")
+                .font(.system(size: 18))
+                .foregroundColor(.black)
+        }
+    }
+}
+
+// MARK: - Action Buttons Row
+struct ActionButtonsRow: View {
+    @Binding var showingExample: Bool
+    @Binding var showingInfo: Bool
+    @Binding var showingShare: Bool
+    let isSaved: Bool
+    let onToggleSave: () -> Void
+    let onInfo: () -> Void
+    let onShare: () -> Void
+    
+    var body: some View {
+        HStack(spacing: 40) {
+            // Info button
+            Button(action: onInfo) {
+                Circle()
+                    .stroke(Color.black, lineWidth: 1.5)
+                    .frame(width: 44, height: 44)
+                    .overlay(
+                        Text("i")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundColor(.black)
+                    )
+            }
+            
+            // Share button
+            Button(action: onShare) {
+                Circle()
+                    .stroke(Color.black, lineWidth: 1.5)
+                    .frame(width: 44, height: 44)
+                    .overlay(
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 16))
+                            .foregroundColor(.black)
+                    )
+            }
+            
+            // Favorite button
+            Button(action: onToggleSave) {
+                Circle()
+                    .stroke(Color.black, lineWidth: 1.5)
+                    .frame(width: 44, height: 44)
+                    .overlay(
+                        Image(systemName: isSaved ? "heart.fill" : "heart")
+                            .font(.system(size: 16))
+                            .foregroundColor(isSaved ? .red : .black)
+                    )
+            }
+            
+            // Example/Bookmark button
+            Button(action: {
+                withAnimation(.spring()) {
+                    showingExample.toggle()
+                }
+            }) {
+                Circle()
+                    .stroke(Color.black, lineWidth: 1.5)
+                    .frame(width: 44, height: 44)
+                    .overlay(
+                        Image(systemName: showingExample ? "bookmark.fill" : "bookmark")
+                            .font(.system(size: 16))
+                            .foregroundColor(.black)
+                    )
+            }
+        }
+    }
+}
+
+// MARK: - Bottom Navigation Bar
+struct BottomNavigationBar: View {
+    let onNext: () -> Void
+    
+    var body: some View {
+        HStack {
+            // Grid button
+            Button(action: {}) {
+                Image(systemName: "grid.circle")
+                    .font(.system(size: 24))
+                    .foregroundColor(.black)
+                    .frame(width: 50, height: 50)
+                    .background(Color.gray.opacity(0.1))
+                    .clipShape(Circle())
+            }
+            
+            Spacer()
+            
+            // Practice button (Üben equivalent)
+            Button(action: onNext) {
+                Text("学习")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .background(Color.gray.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 25))
+            }
+            
+            Spacer()
+            
+            // Profile button
+            NavigationLink(destination: ProfileSettingsView()) {
+                Image(systemName: "person.circle")
+                    .font(.system(size: 24))
+                    .foregroundColor(.black)
+                    .frame(width: 50, height: 50)
+                    .background(Color.gray.opacity(0.1))
+                    .clipShape(Circle())
+            }
+        }
+    }
+}
+
+// MARK: - Word Info Sheet
+struct WordInfoSheet: View {
+    let word: HSKWord
+    @Environment(\.dismiss) var dismiss
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                Text(word.hanzi)
+                    .font(.system(size: 48, weight: .bold))
+                
+                Text("[\(word.pinyin)]")
+                    .font(.system(size: 18))
+                    .foregroundColor(.secondary)
+                
+                Text(word.meaning)
+                    .font(.system(size: 16))
+                    .multilineTextAlignment(.center)
+                
+                if let example = word.example {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("例句 Example:")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                        
+                        Text(example)
+                            .font(.body)
+                            .padding()
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(8)
+                    }
+                }
+                
+                HStack {
+                    Text("HSK Level:")
+                        .fontWeight(.semibold)
+                    Text("\(word.hskLevel)")
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                        .background(Color.blue.opacity(0.1))
+                        .foregroundColor(.blue)
+                        .cornerRadius(8)
+                }
+                
+                Spacer()
+            }
+            .padding()
+            .navigationTitle("词汇详情")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("关闭") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Share Sheet
+struct ShareSheet: View {
+    let word: HSKWord
+    @Environment(\.dismiss) var dismiss
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("分享词汇")
+                .font(.title2)
+                .fontWeight(.bold)
+            
+            VStack(spacing: 12) {
+                Text(word.hanzi)
+                    .font(.system(size: 32, weight: .bold))
+                
+                Text("[\(word.pinyin)]")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                Text(word.meaning)
+                    .font(.body)
+                    .multilineTextAlignment(.center)
+            }
+            .padding()
+            .background(Color.gray.opacity(0.1))
+            .cornerRadius(12)
+            
+            Button("分享到微信") {
+                // Share implementation
+                dismiss()
+            }
+            .buttonStyle(.borderedProminent)
+            
+            Button("取消") {
+                dismiss()
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding()
+        .presentationDetents([.medium])
+    }
+}
+
+#Preview {
+    HomeView()
 }

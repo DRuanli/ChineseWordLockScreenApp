@@ -607,7 +607,7 @@ struct FolderCard: View {
                 HStack {
                     Image(systemName: "folder.fill")
                         .font(.title)
-                        .foregroundColor(Color(hex: folder.colorHex ?? "007AFF"))
+                        .foregroundColor(Color(folder.colorHex ?? "007AFF"))
                     
                     Spacer()
                     

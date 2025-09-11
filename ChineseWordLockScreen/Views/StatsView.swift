@@ -47,7 +47,7 @@ struct StatsView: View {
         NavigationView {
             ZStack {
                 // Clean background
-                Color(hex: "F8F9FA")
+                Color("F8F9FA")
                     .ignoresSafeArea()
                 
                 ScrollView {

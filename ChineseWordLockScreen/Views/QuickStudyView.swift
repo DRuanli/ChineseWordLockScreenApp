@@ -46,7 +46,7 @@ struct QuickStudyView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                Color(hex: "F8F9FA")
+                Color("F8F9FA")
                     .ignoresSafeArea()
                 
                 if currentWords.isEmpty {
