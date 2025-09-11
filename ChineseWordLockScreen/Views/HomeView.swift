@@ -7,6 +7,7 @@
 
 import SwiftUI
 import AVFoundation
+import Photos
 
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
@@ -19,10 +20,14 @@ struct HomeView: View {
     @State private var capturedImage: UIImage?
     @State private var audioPlaying = false
     @State private var currentWordIndex = 0
-    @State private var totalWords = 5
     
     // Swipe threshold
     private let swipeThreshold: CGFloat = 100
+    
+    // Dynamic total words from viewModel
+    var totalWords: Int {
+        viewModel.wordHistory.count
+    }
     
     var body: some View {
         ZStack {
@@ -40,9 +45,12 @@ struct HomeView: View {
             } else {
                 VStack(spacing: 0) {
                     // Top bar with progress indicator
-                    TopProgressBar(currentIndex: currentWordIndex, total: totalWords)
-                        .padding(.horizontal)
-                        .padding(.top, 8)
+                    TopProgressBar(
+                        currentIndex: currentWordIndex,
+                        total: max(totalWords, 1)
+                    )
+                    .padding(.horizontal)
+                    .padding(.top, 8)
                     
                     // Main vocabulary card
                     VocabularyCard(
@@ -69,7 +77,9 @@ struct HomeView: View {
                     
                     // Bottom action buttons
                     ActionButtonBar(
-                        onInfo: { showingInfo = true },
+                        onInfo: {
+                            showingInfo = true
+                        },
                         onShare: shareWord,
                         onLike: toggleLike,
                         onBookmark: toggleBookmark,
@@ -84,6 +94,11 @@ struct HomeView: View {
         .onAppear {
             wordDataManager.refreshData()
             setupScreenshotDetection()
+            
+            // Initialize with at least 5 words
+            if viewModel.wordHistory.count < 5 {
+                viewModel.loadSessionWords(count: 5)
+            }
         }
         .sheet(isPresented: $showingInfo) {
             WordInfoSheet(word: viewModel.currentWord)
@@ -106,25 +121,18 @@ struct HomeView: View {
                         }
                     } else {
                         // Swipe left - next word
-                        if currentWordIndex < totalWords - 1 {
-                            currentWordIndex += 1
-                            viewModel.getNextWord()
-                        }
+                        currentWordIndex += 1
+                        viewModel.getNextWord()
                     }
                 } else {
                     // Vertical swipe
                     if translation.height > 0 {
-                        // Swipe down - could be used for special action
-                        if currentWordIndex < totalWords - 1 {
-                            currentWordIndex += 1
-                            viewModel.getNextWord()
-                        }
+                        // Swipe down - could be used for save action
+                        toggleBookmark()
                     } else {
-                        // Swipe up - could be used for special action
-                        if currentWordIndex < totalWords - 1 {
-                            currentWordIndex += 1
-                            viewModel.getNextWord()
-                        }
+                        // Swipe up - next word
+                        currentWordIndex += 1
+                        viewModel.getNextWord()
                     }
                 }
             }
@@ -152,17 +160,29 @@ struct HomeView: View {
     
     private func toggleLike() {
         viewModel.toggleSave()
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        HapticFeedback.light.trigger()
     }
     
     private func toggleBookmark() {
         viewModel.toggleSave()
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        HapticFeedback.light.trigger()
     }
     
     private func captureCard() {
-        // Implementation for capturing the card as image
-        // This would use a view snapshot extension
+        // Create a view to capture
+        let cardView = ShareableCard(word: viewModel.currentWord)
+        let controller = UIHostingController(rootView: cardView)
+        
+        // Set the size for the card
+        let targetSize = CGSize(width: 350, height: 500)
+        controller.view.bounds = CGRect(origin: .zero, size: targetSize)
+        controller.view.backgroundColor = .clear
+        
+        // Create the image
+        let renderer = UIGraphicsImageRenderer(size: targetSize)
+        capturedImage = renderer.image { _ in
+            controller.view.layer.render(in: UIGraphicsGetCurrentContext()!)
+        }
     }
     
     private func setupScreenshotDetection() {
@@ -259,6 +279,7 @@ struct VocabularyCard: View {
                         .font(.title2)
                         .foregroundColor(.black.opacity(0.7))
                         .scaleEffect(audioPlaying ? 1.2 : 1.0)
+                        .animation(.easeInOut(duration: 0.2), value: audioPlaying)
                 }
             }
             
@@ -401,16 +422,12 @@ struct ShareView: View {
                                 shareToApp("facebook")
                             }
                             
-                            ShareAppButton(appIcon: "camera.circle.fill", appName: "Facebook\nStories", color: .blue) {
-                                shareToApp("fb_stories")
+                            ShareAppButton(appIcon: "camera.circle.fill", appName: "Instagram", color: .purple) {
+                                shareToApp("instagram")
                             }
                             
-                            ShareAppButton(appIcon: "play.rectangle.fill", appName: "Facebook\nReels", color: .blue) {
-                                shareToApp("fb_reels")
-                            }
-                            
-                            ShareAppButton(appIcon: "message.circle.fill", appName: "Facebook\nMessenger", color: .blue) {
-                                shareToApp("messenger")
+                            ShareAppButton(appIcon: "paperplane.fill", appName: "Share More", color: .orange) {
+                                showingActivityView = true
                             }
                         }
                         .padding(.horizontal)
@@ -421,78 +438,51 @@ struct ShareView: View {
             }
             .padding(.vertical, 20)
         }
+        .sheet(isPresented: $showingActivityView) {
+            if let image = capturedImage {
+                ShareActivity(activityItems: [image, createShareText()])
+            }
+        }
     }
     
     private func saveImage() {
-        // Save to photo library
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        guard let image = capturedImage else { return }
+        
+        PHPhotoLibrary.requestAuthorization { status in
+            if status == .authorized {
+                UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+                HapticFeedback.success.trigger()
+            }
+        }
     }
     
     private func copyText() {
-        let text = "\(word.hanzi)\n\(word.pinyin)\n\(word.meaning)"
+        let text = createShareText()
         UIPasteboard.general.string = text
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        HapticFeedback.light.trigger()
     }
     
     private func addToCollection() {
-        // Add to saved words
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        // Save word to collection
+        WordDataManager.shared.saveWord(word)
+        HapticFeedback.success.trigger()
+        isPresented = false
     }
     
     private func shareToApp(_ app: String) {
         showingActivityView = true
     }
-}
-
-// MARK: - Shareable Card
-struct ShareableCard: View {
-    let word: HSKWord
     
-    var body: some View {
-        VStack(spacing: 20) {
-            // Word
-            Text(word.hanzi)
-                .font(.system(size: 60, weight: .bold, design: .serif))
-                .foregroundColor(.black)
-                .padding(.top, 40)
-            
-            // Pronunciation
-            Text("'\(word.pinyin)")
-                .font(.system(size: 20))
-                .foregroundColor(.black.opacity(0.8))
-            
-            // Definition
-            Text("(n.) \(word.meaning)")
-                .font(.system(size: 18))
-                .foregroundColor(.black.opacity(0.9))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 30)
-            
-            // Example
-            if let example = word.example {
-                Text(example)
-                    .font(.system(size: 16))
-                    .foregroundColor(.black.opacity(0.7))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 30)
-                    .padding(.top, 10)
-            }
-            
-            // Watermark
-            Text("vocabulary")
-                .font(.caption)
-                .foregroundColor(.black.opacity(0.4))
-                .padding(.bottom, 30)
-        }
-        .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color.white)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20)
-                        .stroke(Color.black.opacity(0.1), lineWidth: 1)
-                )
-        )
+    private func createShareText() -> String {
+        """
+        Chinese Word: \(word.hanzi)
+        Pinyin: \(word.pinyin)
+        Meaning: \(word.meaning)
+        
+        \(word.example ?? "")
+        
+        Learn Chinese with Chinese Word Lock Screen app!
+        """
     }
 }
 
@@ -546,6 +536,58 @@ struct ShareAppButton: View {
     }
 }
 
+// MARK: - Shareable Card
+struct ShareableCard: View {
+    let word: HSKWord
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            // Word
+            Text(word.hanzi)
+                .font(.system(size: 60, weight: .bold, design: .serif))
+                .foregroundColor(.black)
+                .padding(.top, 40)
+            
+            // Pronunciation
+            Text("'\(word.pinyin)'")
+                .font(.system(size: 20))
+                .foregroundColor(.black.opacity(0.8))
+            
+            // Definition
+            Text("(n.) \(word.meaning)")
+                .font(.system(size: 18))
+                .foregroundColor(.black.opacity(0.9))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 30)
+            
+            // Example
+            if let example = word.example {
+                Text(example)
+                    .font(.system(size: 16))
+                    .foregroundColor(.black.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 30)
+                    .padding(.top, 10)
+            }
+            
+            // Watermark
+            Text("vocabulary")
+                .font(.caption)
+                .foregroundColor(.black.opacity(0.4))
+                .padding(.bottom, 30)
+        }
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(Color.black.opacity(0.1), lineWidth: 1)
+                )
+        )
+    }
+}
+
 // MARK: - Word Info Sheet
 struct WordInfoSheet: View {
     let word: HSKWord
@@ -592,7 +634,7 @@ struct WordInfoSheet: View {
                         // Tone information
                         InfoRow(label: "Tones", value: getTonePattern(word.pinyin))
                         
-                        // Usage frequency (mock data for now)
+                        // Usage frequency
                         InfoRow(label: "Frequency", value: "Common")
                     }
                     .padding(.horizontal)
@@ -621,23 +663,61 @@ struct WordInfoSheet: View {
             "plan": "kế hoạch",
             "worry": "lo lắng",
             "learn": "học",
-            "study": "học tập"
+            "study": "học tập",
+            "discover": "khám phá",
+            "city": "thành phố",
+            "place": "nơi",
+            "animal": "động vật",
+            "country": "quốc gia",
+            "river": "sông",
+            "environment": "môi trường",
+            "meeting": "cuộc họp",
+            "opportunity": "cơ hội",
+            "season": "mùa",
+            "quiet": "yên tĩnh",
+            "smart": "thông minh",
+            "convenient": "tiện lợi",
+            "clean": "sạch sẽ",
+            "simple": "đơn giản",
+            "healthy": "khỏe mạnh",
+            "young": "trẻ",
+            "easy": "dễ",
+            "special": "đặc biệt",
+            "arrange": "sắp xếp",
+            "protect": "bảo vệ",
+            "succeed": "thành công",
+            "apologize": "xin lỗi",
+            "develop": "phát triển",
+            "analyze": "phân tích",
+            "encourage": "khuyến khích",
+            "manage": "quản lý",
+            "doubt": "nghi ngờ",
+            "reduce": "giảm",
+            "exchange": "trao đổi",
+            "refuse": "từ chối"
         ]
         
+        // Try to find direct translation
         for (eng, viet) in translations {
             if english.lowercased().contains(eng) {
                 return viet
             }
         }
+        
+        // Return original if no translation found
         return english
     }
     
     private func getPartOfSpeech(_ meaning: String) -> String {
         // Simple detection based on meaning patterns
-        if meaning.contains("to ") {
+        if meaning.contains("to ") || meaning.contains("ing") {
             return "Verb"
-        } else if meaning.contains("ing") {
-            return "Gerund/Noun"
+        } else if meaning.contains("tion") || meaning.contains("ness") || meaning.contains("ity") {
+            return "Noun"
+        } else if meaning.contains("ly") {
+            return "Adverb"
+        } else if meaning.contains("ful") || meaning.contains("ous") || meaning.contains("ive") {
+            return "Adjective"
         } else {
             return "Noun"
         }
@@ -647,9 +727,12 @@ struct WordInfoSheet: View {
         var pattern = ""
         let syllables = pinyin.split(separator: " ")
         
-        for syllable in syllables {
+        for (index, syllable) in syllables.enumerated() {
+            if index > 0 {
+                pattern += " + "
+            }
             let tone = detectTone(String(syllable))
-            pattern += "Tone \(tone == 0 ? "neutral" : String(tone)) "
+            pattern += "Tone \(tone == 0 ? "neutral" : String(tone))"
         }
         
         return pattern.trimmingCharacters(in: .whitespaces)
@@ -672,6 +755,7 @@ struct WordInfoSheet: View {
     }
 }
 
+// MARK: - InfoRow Helper
 struct InfoRow: View {
     let label: String
     let value: String
@@ -687,6 +771,8 @@ struct InfoRow: View {
         }
     }
 }
+
+// Note: HapticFeedback and ShareActivity are defined in View+Extensions.swift
 
 // MARK: - Preview
 #Preview {

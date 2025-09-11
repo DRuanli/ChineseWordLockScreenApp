@@ -27,6 +27,9 @@ class HomeViewModel: ObservableObject {
         
         // Configure speech synthesizer
         synthesizer.usesApplicationAudioSession = false
+        
+        // Load initial session words
+        loadSessionWords(count: 5)
     }
     
     func checkIfSaved() {
@@ -134,17 +137,23 @@ class HomeViewModel: ObservableObject {
     }
     
     // Helper method to get random words for session
-    func loadSessionWords(count: Int = 5) -> [HSKWord] {
-        var words: [HSKWord] = []
-        let allWords = HSKDatabaseSeeder.shared.getSampleWords()
-        
-        for _ in 0..<count {
-            if let randomWord = allWords.randomElement() {
-                words.append(randomWord)
-            }
+    func loadSessionWords(count: Int = 5) {
+        // Don't override existing history
+        if wordHistory.count >= count {
+            return
         }
         
-        return words
+        let allWords = HSKDatabaseSeeder.shared.getSampleWords()
+        
+        // Add more words to reach the desired count
+        while wordHistory.count < count {
+            if let randomWord = allWords.randomElement() {
+                // Avoid duplicates
+                if !wordHistory.contains(where: { $0.hanzi == randomWord.hanzi }) {
+                    wordHistory.append(randomWord)
+                }
+            }
+        }
     }
     
     // Share functionality
@@ -212,5 +221,41 @@ class HomeViewModel: ObservableObject {
             if tone4.contains(where: { charStr.contains($0) }) { return "4 (Falling)" }
         }
         return "Neutral"
+    }
+    
+    // MARK: - Word Management
+    func refreshWord() {
+        currentWord = HSKDatabaseSeeder.shared.getRandomWord()
+        checkIfSaved()
+        wordDataManager.saveToUserDefaults(word: currentWord)
+    }
+    
+    func loadWordForLevel(_ level: Int) {
+        if let word = HSKDatabaseSeeder.shared.getWordForLevel(level) {
+            currentWord = word
+            if !wordHistory.contains(where: { $0.hanzi == word.hanzi }) {
+                wordHistory.append(word)
+                currentIndex = wordHistory.count - 1
+            }
+            checkIfSaved()
+            wordDataManager.saveToUserDefaults(word: currentWord)
+        }
+    }
+    
+    // MARK: - Statistics
+    func getTodayWordCount() -> Int {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        
+        return wordHistory.filter { word in
+            // In a real app, you'd track when words were viewed
+            // For now, just return current session count
+            true
+        }.count
+    }
+    
+    func getSessionProgress() -> Double {
+        guard !wordHistory.isEmpty else { return 0 }
+        return Double(currentIndex + 1) / Double(wordHistory.count)
     }
 }

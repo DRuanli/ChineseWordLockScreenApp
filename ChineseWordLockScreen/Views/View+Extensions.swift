@@ -82,10 +82,10 @@ extension Color {
 // MARK: - Share Activity Helper
 struct ShareActivity: UIViewControllerRepresentable {
     let activityItems: [Any]
-    let applicationActivities: [UIActivity]? = nil
+    var applicationActivities: [UIActivity]? = nil
     @Environment(\.presentationMode) var presentationMode
     
-    func makeUIViewController(context: UIViewControllerRepresentableContext<ShareActivity>) -> UIActivityViewController {
+    func makeUIViewController(context: Context) -> UIActivityViewController {
         let controller = UIActivityViewController(
             activityItems: activityItems,
             applicationActivities: applicationActivities
@@ -98,7 +98,7 @@ struct ShareActivity: UIViewControllerRepresentable {
         return controller
     }
     
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: UIViewControllerRepresentableContext<ShareActivity>) {}
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - Screenshot Detection
@@ -143,4 +143,3 @@ struct DeviceInfo {
         return window.safeAreaInsets.top > 20
     }
 }
-
