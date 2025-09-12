@@ -3,11 +3,13 @@
 //  ChineseWordLockScreen
 //
 //  Redesigned minimalist vocabulary card with swipe navigation
+//  Updated with fixed swipe logic and word source selection
 //
 
 import SwiftUI
 import AVFoundation
 import Photos
+import CoreData
 
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
@@ -44,13 +46,37 @@ struct HomeView: View {
                 .transition(.opacity)
             } else {
                 VStack(spacing: 0) {
+                    // Word source selector at the top
+                    HStack {
+                        WordSourceSelector(
+                            sourceMode: $viewModel.wordSourceMode,
+                            selectedFolderId: $viewModel.selectedFolderId
+                        )
+                        .onChange(of: viewModel.wordSourceMode) { _ in
+                            // Reload words when source changes
+                            viewModel.loadSessionWords(count: 10)
+                            currentWordIndex = 0
+                        }
+                        .onChange(of: viewModel.selectedFolderId) { _ in
+                            // Reload words when folder changes
+                            if viewModel.wordSourceMode == .folder {
+                                viewModel.loadSessionWords(count: 10)
+                                currentWordIndex = 0
+                            }
+                        }
+                        
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                    
                     // Top bar with progress indicator
                     TopProgressBar(
                         currentIndex: currentWordIndex,
                         total: max(totalWords, 1)
                     )
                     .padding(.horizontal)
-                    .padding(.top, 8)
+                    .padding(.top, 4)
                     
                     // Main vocabulary card
                     VocabularyCard(
@@ -82,9 +108,7 @@ struct HomeView: View {
                         },
                         onShare: shareWord,
                         onLike: toggleLike,
-                        onBookmark: toggleBookmark,
-                        isLiked: viewModel.isSaved,
-                        isBookmarked: viewModel.isSaved
+                        isLiked: viewModel.isSaved
                     )
                     .padding(.horizontal, 40)
                     .padding(.bottom, 30)
@@ -95,10 +119,8 @@ struct HomeView: View {
             wordDataManager.refreshData()
             setupScreenshotDetection()
             
-            // Initialize with at least 5 words
-            if viewModel.wordHistory.count < 5 {
-                viewModel.loadSessionWords(count: 5)
-            }
+            // Initialize with words based on selected mode
+            viewModel.loadSessionWords(count: 10)
         }
         .sheet(isPresented: $showingInfo) {
             WordInfoSheet(word: viewModel.currentWord)
@@ -110,27 +132,39 @@ struct HomeView: View {
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
             // Check if swipe exceeds threshold
             if abs(translation.width) > swipeThreshold || abs(translation.height) > swipeThreshold {
-                // Determine swipe direction and load next word
+                // Determine swipe direction
                 if abs(translation.width) > abs(translation.height) {
                     // Horizontal swipe
                     if translation.width > 0 {
-                        // Swipe right - previous word
-                        if currentWordIndex > 0 {
-                            currentWordIndex -= 1
-                            viewModel.getPreviousWord()
+                        // Swipe right - Add to favorites (if not already saved)
+                        if !viewModel.isSaved {
+                            viewModel.toggleSave()
+                            // Use HapticFeedback that's already defined in the project
+                            HapticFeedback.success.trigger()
                         }
+                        // Then move to next word
+                        currentWordIndex += 1
+                        viewModel.getNextWord()
                     } else {
-                        // Swipe left - next word
+                        // Swipe left - Remove from favorites (if saved)
+                        if viewModel.isSaved {
+                            viewModel.toggleSave()
+                            HapticFeedback.light.trigger()
+                        }
+                        // Then move to next word
                         currentWordIndex += 1
                         viewModel.getNextWord()
                     }
                 } else {
                     // Vertical swipe
                     if translation.height > 0 {
-                        // Swipe down - could be used for save action
-                        toggleBookmark()
+                        // Swipe down - Go to previous word
+                        if currentWordIndex > 0 {
+                            currentWordIndex -= 1
+                            viewModel.getPreviousWord()
+                        }
                     } else {
-                        // Swipe up - next word
+                        // Swipe up - Go to next word
                         currentWordIndex += 1
                         viewModel.getNextWord()
                     }
@@ -163,11 +197,6 @@ struct HomeView: View {
         HapticFeedback.light.trigger()
     }
     
-    private func toggleBookmark() {
-        viewModel.toggleSave()
-        HapticFeedback.light.trigger()
-    }
-    
     private func captureCard() {
         // Create a view to capture
         let cardView = ShareableCard(word: viewModel.currentWord)
@@ -191,58 +220,164 @@ struct HomeView: View {
             object: nil,
             queue: .main
         ) { _ in
-            showingShareView = true
+            // Increment screenshot count or handle as needed
+            print("Screenshot taken")
         }
+    }
+    
+    private func saveImage() {
+        guard let image = capturedImage else { return }
+        
+        PHPhotoLibrary.requestAuthorization { status in
+            if status == .authorized {
+                UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+                HapticFeedback.success.trigger()
+            }
+        }
+    }
+    
+    private func copyText() {
+        let textToCopy = """
+        \(viewModel.currentWord.hanzi)
+        \(viewModel.currentWord.pinyin)
+        \(viewModel.currentWord.meaning)
+        """
+        UIPasteboard.general.string = textToCopy
+        HapticFeedback.success.trigger()
+    }
+    
+    private func shareToApp() {
+        guard let image = capturedImage else { return }
+        
+        let activityVC = UIActivityViewController(
+            activityItems: [image, viewModel.shareWord()],
+            applicationActivities: nil
+        )
+        
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let rootViewController = windowScene.windows.first?.rootViewController {
+            rootViewController.present(activityVC, animated: true)
+        }
+    }
+}
+
+// MARK: - Word Source Selector
+struct WordSourceSelector: View {
+    @Binding var sourceMode: WordSourceMode
+    @Binding var selectedFolderId: NSManagedObjectID?
+    @State private var showingFolderPicker = false
+    
+    @FetchRequest(
+        sortDescriptors: [NSSortDescriptor(keyPath: \PersonalFolder.name, ascending: true)],
+        animation: .default)
+    private var folders: FetchedResults<PersonalFolder>
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            // Mode selector
+            Menu {
+                ForEach(WordSourceMode.allCases, id: \.self) { mode in
+                    Button {
+                        sourceMode = mode
+                        if mode == .folder && folders.first != nil {
+                            selectedFolderId = folders.first?.objectID
+                        }
+                    } label: {
+                        HStack {
+                            Text(mode.rawValue)
+                            if sourceMode == mode {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack {
+                    Image(systemName: iconForMode(sourceMode))
+                        .font(.system(size: 16))
+                    Text(sourceMode.rawValue)
+                        .font(.system(size: 14, weight: .medium))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(UIColor.secondarySystemBackground))
+                )
+            }
+            
+            // Show folder selector if folder mode is selected
+            if sourceMode == .folder && !folders.isEmpty {
+                Menu {
+                    ForEach(folders, id: \.objectID) { folder in
+                        Button {
+                            selectedFolderId = folder.objectID
+                        } label: {
+                            HStack {
+                                Text(folder.name ?? "Unnamed")
+                                if selectedFolderId == folder.objectID {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Image(systemName: "folder.fill")
+                            .font(.system(size: 14))
+                        Text(selectedFolderName)
+                            .font(.system(size: 12))
+                            .lineLimit(1)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.blue.opacity(0.1))
+                    )
+                }
+            }
+        }
+    }
+    
+    private func iconForMode(_ mode: WordSourceMode) -> String {
+        switch mode {
+        case .random:
+            return "shuffle"
+        case .favorites:
+            return "heart.fill"
+        case .folder:
+            return "folder.fill"
+        case .mixed:
+            return "square.stack.3d.up.fill"
+        }
+    }
+    
+    private var selectedFolderName: String {
+        guard let folderId = selectedFolderId,
+              let folder = folders.first(where: { $0.objectID == folderId }) else {
+            return "Select Folder"
+        }
+        return folder.name ?? "Unnamed"
     }
 }
 
 // MARK: - Top Progress Bar
 struct TopProgressBar: View {
-    @StateObject private var wordDataManager = WordDataManager.shared
     let currentIndex: Int
     let total: Int
     
-    var progress: Double {
-        guard total > 0 else { return 0 }
-        return Double(currentIndex + 1) / Double(total)
-    }
-    
     var body: some View {
-        HStack {
-            Image(systemName: "bookmark")
-                .font(.title2)
-                .foregroundColor(.black.opacity(0.7))
-            
-            Text("\(currentIndex + 1)/\(total)")
-                .font(.headline)
-                .foregroundColor(.black.opacity(0.7))
-            
-            // Progress bar
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.black.opacity(0.2))
-                        .frame(height: 8)
-                    
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.black.opacity(0.7))
-                        .frame(width: geometry.size.width * progress, height: 8)
-                        .animation(.spring(), value: progress)
-                }
+        HStack(spacing: 4) {
+            ForEach(0..<min(total, 10), id: \.self) { index in
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(index <= currentIndex ? Color.black : Color.black.opacity(0.2))
+                    .frame(height: 4)
             }
-            .frame(height: 8)
-            
-            Spacer()
-            
-            Image(systemName: "crown")
-                .font(.title2)
-                .foregroundColor(.black.opacity(0.7))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(
-                    Circle()
-                        .fill(Color.white.opacity(0.9))
-                )
         }
     }
 }
@@ -254,25 +389,19 @@ struct VocabularyCard: View {
     let onPlayAudio: () -> Void
     
     var body: some View {
-        VStack(spacing: 25) {
+        VStack(spacing: 30) {
             Spacer()
             
-            // Main word
+            // Chinese character
             Text(word.hanzi)
-                .font(.system(size: 80, weight: .bold, design: .serif))
+                .font(.system(size: 80, weight: .regular))
                 .foregroundColor(.black)
             
-            // Pronunciation with audio button
-            HStack(spacing: 12) {
+            // Pinyin with audio button
+            HStack(spacing: 15) {
                 Text(word.pinyin)
-                    .font(.system(size: 24, weight: .regular))
+                    .font(.system(size: 28, weight: .regular))
                     .foregroundColor(.black.opacity(0.8))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 20)
-                            .fill(Color.white.opacity(0.9))
-                    )
                 
                 Button(action: onPlayAudio) {
                     Image(systemName: audioPlaying ? "speaker.wave.3.fill" : "speaker.wave.2.fill")
@@ -320,9 +449,7 @@ struct ActionButtonBar: View {
     let onInfo: () -> Void
     let onShare: () -> Void
     let onLike: () -> Void
-    let onBookmark: () -> Void
     let isLiked: Bool
-    let isBookmarked: Bool
     
     var body: some View {
         HStack(spacing: 40) {
@@ -347,14 +474,6 @@ struct ActionButtonBar: View {
                 Image(systemName: isLiked ? "heart.fill" : "heart")
                     .font(.title)
                     .foregroundColor(isLiked ? .red : .black.opacity(0.7))
-                    .frame(width: 44, height: 44)
-            }
-            
-            // Bookmark button
-            Button(action: onBookmark) {
-                Image(systemName: isBookmarked ? "bookmark.fill" : "bookmark")
-                    .font(.title)
-                    .foregroundColor(isBookmarked ? .blue : .black.opacity(0.7))
                     .frame(width: 44, height: 44)
             }
         }
@@ -406,42 +525,15 @@ struct ShareView: View {
                             copyText()
                         }
                         
-                        ShareActionButton(icon: "bookmark", label: "Add to collection") {
-                            addToCollection()
+                        ShareActionButton(icon: "paperplane", label: "Share") {
+                            shareToApp()
                         }
-                    }
-                    
-                    // Share options
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 20) {
-                            ShareAppButton(appIcon: "message.fill", appName: "Messages", color: .green) {
-                                shareToApp("messages")
-                            }
-                            
-                            ShareAppButton(appIcon: "f.circle.fill", appName: "Facebook", color: .blue) {
-                                shareToApp("facebook")
-                            }
-                            
-                            ShareAppButton(appIcon: "camera.circle.fill", appName: "Instagram", color: .purple) {
-                                shareToApp("instagram")
-                            }
-                            
-                            ShareAppButton(appIcon: "paperplane.fill", appName: "Share More", color: .orange) {
-                                showingActivityView = true
-                            }
-                        }
-                        .padding(.horizontal)
                     }
                 }
                 
                 Spacer()
             }
-            .padding(.vertical, 20)
-        }
-        .sheet(isPresented: $showingActivityView) {
-            if let image = capturedImage {
-                ShareActivity(activityItems: [image, createShareText()])
-            }
+            .padding(.top, 50)
         }
     }
     
@@ -457,32 +549,40 @@ struct ShareView: View {
     }
     
     private func copyText() {
-        let text = createShareText()
-        UIPasteboard.general.string = text
-        HapticFeedback.light.trigger()
-    }
-    
-    private func addToCollection() {
-        // Save word to collection
-        WordDataManager.shared.saveWord(word)
-        HapticFeedback.success.trigger()
-        isPresented = false
-    }
-    
-    private func shareToApp(_ app: String) {
-        showingActivityView = true
-    }
-    
-    private func createShareText() -> String {
+        let textToCopy = """
+        \(word.hanzi)
+        \(word.pinyin)
+        \(word.meaning)
         """
-        Chinese Word: \(word.hanzi)
-        Pinyin: \(word.pinyin)
+        UIPasteboard.general.string = textToCopy
+        HapticFeedback.success.trigger()
+    }
+    
+    private func shareToApp() {
+        guard let image = capturedImage else { return }
+        
+        let shareText = """
+        Chinese Word of the Day
+        
+        \(word.hanzi)
+        \(word.pinyin)
+        
         Meaning: \(word.meaning)
         
         \(word.example ?? "")
         
         Learn Chinese with Chinese Word Lock Screen app!
         """
+        
+        let activityVC = UIActivityViewController(
+            activityItems: [image, shareText],
+            applicationActivities: nil
+        )
+        
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let rootViewController = windowScene.windows.first?.rootViewController {
+            rootViewController.present(activityVC, animated: true)
+        }
     }
 }
 
@@ -497,40 +597,10 @@ struct ShareActionButton: View {
             VStack(spacing: 8) {
                 Image(systemName: icon)
                     .font(.title2)
-                    .foregroundColor(.white)
-                
                 Text(label)
                     .font(.caption)
-                    .foregroundColor(.white)
             }
-            .frame(width: 100)
-        }
-    }
-}
-
-// MARK: - Share App Button
-struct ShareAppButton: View {
-    let appIcon: String
-    let appName: String
-    let color: Color
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                Image(systemName: appIcon)
-                    .font(.largeTitle)
-                    .foregroundColor(.white)
-                    .frame(width: 60, height: 60)
-                    .background(color)
-                    .clipShape(Circle())
-                
-                Text(appName)
-                    .font(.caption2)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-            }
+            .foregroundColor(.white)
             .frame(width: 80)
         }
     }
@@ -542,48 +612,35 @@ struct ShareableCard: View {
     
     var body: some View {
         VStack(spacing: 20) {
-            // Word
             Text(word.hanzi)
-                .font(.system(size: 60, weight: .bold, design: .serif))
-                .foregroundColor(.black)
-                .padding(.top, 40)
+                .font(.system(size: 60, weight: .regular))
             
-            // Pronunciation
-            Text("'\(word.pinyin)'")
+            Text(word.pinyin)
+                .font(.system(size: 24))
+                .foregroundColor(.secondary)
+            
+            Text(word.meaning)
                 .font(.system(size: 20))
-                .foregroundColor(.black.opacity(0.8))
-            
-            // Definition
-            Text("(n.) \(word.meaning)")
-                .font(.system(size: 18))
-                .foregroundColor(.black.opacity(0.9))
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 30)
+                .padding(.horizontal)
             
-            // Example
             if let example = word.example {
                 Text(example)
                     .font(.system(size: 16))
-                    .foregroundColor(.black.opacity(0.7))
+                    .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 30)
-                    .padding(.top, 10)
+                    .padding(.horizontal)
             }
-            
-            // Watermark
-            Text("vocabulary")
-                .font(.caption)
-                .foregroundColor(.black.opacity(0.4))
-                .padding(.bottom, 30)
         }
+        .padding(30)
         .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 20)
                 .fill(Color.white)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20)
-                        .stroke(Color.black.opacity(0.1), lineWidth: 1)
-                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
         )
     }
 }
@@ -592,140 +649,95 @@ struct ShareableCard: View {
 struct WordInfoSheet: View {
     let word: HSKWord
     @Environment(\.dismiss) var dismiss
+    @State private var currentTab = 0
     
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    // Word header
-                    VStack(spacing: 12) {
-                        Text(word.hanzi)
-                            .font(.system(size: 60, weight: .bold))
-                            .frame(maxWidth: .infinity)
-                        
-                        Text(word.pinyin)
-                            .font(.title2)
-                            .foregroundColor(.secondary)
-                        
-                        Text(word.meaning)
-                            .font(.title3)
-                            .multilineTextAlignment(.center)
-                        
-                        // Vietnamese meaning
-                        Text(getVietnameseMeaning(word.meaning))
-                            .font(.title3)
-                            .foregroundColor(.blue)
-                            .multilineTextAlignment(.center)
+            VStack(spacing: 20) {
+                // Tabs
+                Picker("Info", selection: $currentTab) {
+                    Text("Details").tag(0)
+                    Text("Tones").tag(1)
+                    Text("Usage").tag(2)
+                }
+                .pickerStyle(SegmentedPickerStyle())
+                .padding(.horizontal)
+                
+                ScrollView {
+                    switch currentTab {
+                    case 0:
+                        DetailsTab(word: word)
+                    case 1:
+                        TonesTab(word: word)
+                    case 2:
+                        UsageTab(word: word)
+                    default:
+                        EmptyView()
                     }
-                    .padding(.vertical, 20)
-                    
-                    Divider()
-                    
-                    // Additional information
-                    VStack(alignment: .leading, spacing: 16) {
-                        InfoRow(label: "HSK Level", value: "HSK \(word.hskLevel)")
-                        
-                        if let example = word.example {
-                            InfoRow(label: "Example", value: example)
-                        }
-                        
-                        InfoRow(label: "Part of Speech", value: getPartOfSpeech(word.meaning))
-                        
-                        // Tone information
-                        InfoRow(label: "Tones", value: getTonePattern(word.pinyin))
-                        
-                        // Usage frequency
-                        InfoRow(label: "Frequency", value: "Common")
-                    }
-                    .padding(.horizontal)
                 }
             }
-            .navigationTitle("Word Details")
+            .navigationTitle("Word Information")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { dismiss() }
+                    Button("Done") {
+                        dismiss()
+                    }
                 }
             }
         }
     }
+}
+
+// MARK: - Details Tab
+struct DetailsTab: View {
+    let word: HSKWord
     
-    private func getVietnameseMeaning(_ english: String) -> String {
-        let translations: [String: String] = [
-            "wide": "rộng",
-            "method": "phương pháp",
-            "help": "giúp đỡ",
-            "competition": "cuộc thi",
-            "express": "biểu đạt",
-            "change": "thay đổi",
-            "participate": "tham gia",
-            "be late": "trễ",
-            "plan": "kế hoạch",
-            "worry": "lo lắng",
-            "learn": "học",
-            "study": "học tập",
-            "discover": "khám phá",
-            "city": "thành phố",
-            "place": "nơi",
-            "animal": "động vật",
-            "country": "quốc gia",
-            "river": "sông",
-            "environment": "môi trường",
-            "meeting": "cuộc họp",
-            "opportunity": "cơ hội",
-            "season": "mùa",
-            "quiet": "yên tĩnh",
-            "smart": "thông minh",
-            "convenient": "tiện lợi",
-            "clean": "sạch sẽ",
-            "simple": "đơn giản",
-            "healthy": "khỏe mạnh",
-            "young": "trẻ",
-            "easy": "dễ",
-            "special": "đặc biệt",
-            "arrange": "sắp xếp",
-            "protect": "bảo vệ",
-            "succeed": "thành công",
-            "apologize": "xin lỗi",
-            "develop": "phát triển",
-            "analyze": "phân tích",
-            "encourage": "khuyến khích",
-            "manage": "quản lý",
-            "doubt": "nghi ngờ",
-            "reduce": "giảm",
-            "exchange": "trao đổi",
-            "refuse": "từ chối"
-        ]
-        
-        // Try to find direct translation
-        for (eng, viet) in translations {
-            if english.lowercased().contains(eng) {
-                return viet
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            InfoRow(label: "Character", value: word.hanzi)
+            InfoRow(label: "Pinyin", value: word.pinyin)
+            InfoRow(label: "Meaning", value: word.meaning)
+            InfoRow(label: "HSK Level", value: "HSK \(word.hskLevel)")
+            
+            if let example = word.example {
+                InfoRow(label: "Example", value: example)
             }
         }
-        
-        // Return original if no translation found
-        return english
+        .padding()
     }
+}
+
+// MARK: - Tones Tab
+struct TonesTab: View {
+    let word: HSKWord
     
-    private func getPartOfSpeech(_ meaning: String) -> String {
-        // Simple detection based on meaning patterns
-        if meaning.contains("to ") || meaning.contains("ing") {
-            return "Verb"
-        } else if meaning.contains("tion") || meaning.contains("ness") || meaning.contains("ity") {
-            return "Noun"
-        } else if meaning.contains("ly") {
-            return "Adverb"
-        } else if meaning.contains("ful") || meaning.contains("ous") || meaning.contains("ive") {
-            return "Adjective"
-        } else {
-            return "Noun"
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Tone Analysis")
+                .font(.headline)
+            
+            Text(analyzeTonePattern(word.pinyin))
+                .font(.system(size: 18))
+                .padding()
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(10)
+            
+            VStack(alignment: .leading, spacing: 12) {
+                ToneInfo(tone: 1, description: "High level tone (ā)")
+                ToneInfo(tone: 2, description: "Rising tone (á)")
+                ToneInfo(tone: 3, description: "Dipping tone (ǎ)")
+                ToneInfo(tone: 4, description: "Falling tone (à)")
+                ToneInfo(tone: 0, description: "Neutral tone")
+            }
+            .padding()
         }
+        .padding()
     }
     
-    private func getTonePattern(_ pinyin: String) -> String {
-        var pattern = ""
+    private func analyzeTonePattern(_ pinyin: String) -> String {
         let syllables = pinyin.split(separator: " ")
+        var pattern = ""
         
         for (index, syllable) in syllables.enumerated() {
             if index > 0 {
@@ -755,7 +767,43 @@ struct WordInfoSheet: View {
     }
 }
 
-// MARK: - InfoRow Helper
+// MARK: - Usage Tab
+struct UsageTab: View {
+    let word: HSKWord
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Common Usage")
+                .font(.headline)
+            
+            if let example = word.example {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Example Sentence:")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    
+                    Text(example)
+                        .padding()
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(10)
+                }
+            }
+            
+            Text("Study Tips")
+                .font(.headline)
+                .padding(.top)
+            
+            VStack(alignment: .leading, spacing: 12) {
+                StudyTip(icon: "lightbulb.fill", text: "Practice writing the character stroke by stroke")
+                StudyTip(icon: "speaker.wave.2.fill", text: "Listen to the pronunciation multiple times")
+                StudyTip(icon: "book.fill", text: "Create your own example sentences")
+            }
+        }
+        .padding()
+    }
+}
+
+// MARK: - Helper Views
 struct InfoRow: View {
     let label: String
     let value: String
@@ -772,7 +820,48 @@ struct InfoRow: View {
     }
 }
 
-// Note: HapticFeedback and ShareActivity are defined in View+Extensions.swift
+struct ToneInfo: View {
+    let tone: Int
+    let description: String
+    
+    var body: some View {
+        HStack {
+            Circle()
+                .fill(toneColor)
+                .frame(width: 12, height: 12)
+            
+            Text(description)
+                .font(.subheadline)
+        }
+    }
+    
+    private var toneColor: Color {
+        switch tone {
+        case 1: return .red
+        case 2: return .orange
+        case 3: return .green
+        case 4: return .blue
+        default: return .gray
+        }
+    }
+}
+
+struct StudyTip: View {
+    let icon: String
+    let text: String
+    
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .foregroundColor(.blue)
+                .frame(width: 24)
+            
+            Text(text)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+        }
+    }
+}
 
 // MARK: - Preview
 #Preview {
